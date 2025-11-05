@@ -1,0 +1,56 @@
+# ---
+id: "tree-of-thought"
+title: "Tree of Thought (ToT): Generate\u2013Evaluate\u2013Select"
+version: "1.0.0"
+category: "reasoning"
+tags:
+  - reasoning
+  - ToT
+  - brainstorming
+  - branching
+model_preferences:
+  system: "You are a strategist who explores multiple options, evaluates them, and selects the best."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+  params: {"temperature": 0.5, "top_p": 0.95, "max_tokens": 1600}
+combines_with:
+  - multi-perspective-simulation
+  - controlled-hallucination
+  - graph-of-thought
+# ---
+slots:
+  - name: goal
+    label: "Problem / Goal"
+    type: textarea
+  - name: n_ideas
+    label: "Number of initial ideas"
+    type: number
+    default: 3
+  - name: criteria
+    label: "Evaluation criteria (comma-separated)"
+    type: text
+    default: "impact,feasibility,risks,effort"
+prompt: |
+  Goal: {{goal}}
+  
+  Phase 1 — Generate ({{n_ideas}} ideas):
+  - Produce {{n_ideas}} distinct, viable approaches. Label them A, B, C...
+  - Each approach: 1–2 sentences capturing the core premise.
+  
+  Phase 2 — Evaluate (table):
+  - Build a markdown table scoring each approach on: {{criteria}} (0–10) and provide 1–2 sentence justification per criterion.
+  
+  Phase 3 — Select:
+  - Recommend the best single approach (or hybrid). Explain in 3–5 bullets why it beats alternatives.
+  - Provide next 3 concrete steps to proceed.
+  
+  Rules:
+  - No assumptions posing as facts; mark uncertain points.
+  - Keep each step auditable.
+when_to_use: |
+  Use for open-ended problems where multiple solution paths are plausible and should be compared.
+failure_modes: |
+  Shallow or repetitive options; evaluation without clear trade-offs; selection not aligned with criteria.
+acceptance_criteria: |
+  At least three distinct paths; comparative scoring with rationales; a justified, actionable selection.

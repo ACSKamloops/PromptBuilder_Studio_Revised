@@ -1,0 +1,36 @@
+# ---
+id: "caption-assisted-reasoning"
+title: "Caption-Assisted Reasoning (for complex images/figures)"
+version: "1.0.0"
+category: "multimodal"
+tags:
+  - caption
+  - vision-to-text
+  - constraints
+model_preferences:
+  system: "Translate visual constraints to text before solving."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - chain-of-verification
+# ---
+slots:
+  - name: image_desc
+    label: "Figure description/observations"
+    type: textarea
+  - name: problem
+    label: "Problem to solve about the figure"
+    type: text
+prompt: |
+  Figure (observed details):
+  {{image_desc}}
+  
+  Phase 1 — Caption: Write a precise, constraint-rich caption listing elements and relationships as atomic statements.
+  Phase 2 — Solve: Using only those textual constraints plus the question, solve: {{problem}}. Show steps; flag any missing constraint.
+when_to_use: |
+  Use for diagrams where relationships/constraints must be explicit before reasoning.
+failure_modes: |
+  Vague caption; reasoning relying on memory not captured constraints.
+acceptance_criteria: |
+  Atomic constraints listed; solution steps reference constraints explicitly.

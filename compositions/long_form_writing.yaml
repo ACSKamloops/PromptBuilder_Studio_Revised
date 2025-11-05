@@ -1,0 +1,19 @@
+id: long-form-writing
+title: Long-Form Writing — CAD + RSIP
+steps:
+  - use: context-aware-decomposition
+    map:
+      title: "{{user.title}}"
+      thesis: "{{user.thesis}}"
+      audience: "{{user.audience}}"
+      sections: 6
+  - use: recursive-self-improvement
+    map:
+      draft: "{{prev.section_1_draft}}"
+      criterion1: "Structure"
+      criterion2: "Style/Tone"
+  - use: chain-of-verification
+    map:
+      query: "{{prev.revised_section_1}}"
+outputs:
+  - section_1_polished: "{{last.verified_answer}}"

@@ -1,0 +1,46 @@
+{
+  "slot_controls": {
+    "text": {
+      "component": "TextInput"
+    },
+    "textarea": {
+      "component": "Textarea",
+      "props": {
+        "rows": 6
+      }
+    },
+    "select": {
+      "component": "Select"
+    },
+    "multiselect": {
+      "component": "MultiSelect"
+    },
+    "toggle": {
+      "component": "Switch"
+    },
+    "number": {
+      "component": "NumberInput",
+      "props": {
+        "min": 0
+      }
+    }
+  },
+  "rendering_rules": [
+    {
+      "if_tag": "citations",
+      "show": "citation_style"
+    },
+    {
+      "if_category": "multimodal",
+      "hint": "Attach image/diagram and paste OCR if available."
+    },
+    {
+      "if_category": "playbook",
+      "hint": "Outputs of each step feed into the next; show a mini pipeline graph."
+    }
+  ],
+  "export": {
+    "markdown": true,
+    "json": true
+  }
+}

@@ -1,0 +1,42 @@
+# ---
+id: "provenance-enforcement"
+title: "Provenance & Citation Enforcement"
+version: "1.0.0"
+category: "governance"
+tags:
+  - citations
+  - provenance
+  - governance
+model_preferences:
+  system: "Every factual claim must map to a source; unknowns labeled explicitly."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - rag-grounded
+  - deep-research-playbook
+# ---
+slots:
+  - name: claims
+    label: "Claims to document"
+    type: textarea
+    help: "One claim per line."
+  - name: sources
+    label: "Source snippets"
+    type: textarea
+    help: "Paste source fragments with identifiers."
+prompt: |
+  Claims:
+  {{claims}}
+  
+  Sources (ID :: text):
+  {{sources}}
+  
+  Build a table: Claim | Source ID(s) | Quoted Evidence | Confidence | Notes.
+  If a claim lacks a source, mark 'Unverified' and propose retrieval queries.
+when_to_use: |
+  Use to ensure traceability of facts before publication.
+failure_modes: |
+  Claims left without sources; vague evidence; confidence not stated.
+acceptance_criteria: |
+  Every claim mapped or marked 'Unverified' with next retrieval actions.

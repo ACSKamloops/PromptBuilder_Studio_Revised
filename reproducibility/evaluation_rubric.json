@@ -1,0 +1,45 @@
+{
+  "dimensions": [
+    {
+      "name": "Grounding",
+      "scale": 5,
+      "anchors": [
+        "No sources",
+        "All key claims cited"
+      ]
+    },
+    {
+      "name": "Reasoning Clarity",
+      "scale": 5,
+      "anchors": [
+        "Opaque",
+        "Explicit steps, no gaps"
+      ]
+    },
+    {
+      "name": "Correctness",
+      "scale": 5,
+      "anchors": [
+        "Contradictions/errors",
+        "Internally consistent, verified"
+      ]
+    },
+    {
+      "name": "Completeness",
+      "scale": 5,
+      "anchors": [
+        "Major gaps",
+        "All requirements addressed"
+      ]
+    },
+    {
+      "name": "Style/Tone",
+      "scale": 5,
+      "anchors": [
+        "Inappropriate",
+        "Fit for audience"
+      ]
+    }
+  ],
+  "pass_threshold": 4
+}

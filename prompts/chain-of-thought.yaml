@@ -1,0 +1,55 @@
+# ---
+id: "chain-of-thought"
+title: "Chain of Thought (CoT)"
+version: "1.0.0"
+category: "reasoning"
+tags:
+  - reasoning
+  - CoT
+  - step-by-step
+model_preferences:
+  system: "You are a meticulous analyst who shows working steps clearly and briefly."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+  params: {"temperature": 0.2, "top_p": 0.9, "max_tokens": 1200}
+combines_with:
+  - rag-grounded
+  - chain-of-verification
+  - self-refine
+# ---
+slots:
+  - name: task
+    label: "Task / Question"
+    type: textarea
+    help: "State the problem to solve."
+  - name: format
+    label: "Output format expectation"
+    type: text
+    default: "Concise final answer after numbered steps."
+  - name: show_work
+    label: "Show reasoning steps?"
+    type: toggle
+    default: true
+prompt: |
+  {{#if show_work}}Let's think step-by-step.{{/if}}
+  Task: {{task}}
+  
+  Instructions:
+  - Break the problem into minimal steps.
+  - Keep each step self-contained and verifiable (numbers shown where applicable).
+  - Avoid introducing new assumptions.
+  - Provide the final answer under a heading: "Final Answer".
+  Output format: {{format}}
+when_to_use: |
+  Use this template whenever the task involves multiple logical, mathematical, or procedural steps that benefit from explicit intermediate reasoning.
+failure_modes: |
+  - Unnecessary verbosity: steps meander without contributing to solution.
+  - Hidden arithmetic: results presented without showing operations.
+  - Over-assumption: speculative facts injected instead of derived.
+acceptance_criteria: |
+  - Numbered steps, each necessary and sufficient.
+  - Arithmetic shown explicitly when relevant.
+  - Final answer clearly separated and consistent with steps.
+example_instantiation: |
+  Task: "If Alice has twice as many apples as Bob and they have 30 total, how many does each have?"

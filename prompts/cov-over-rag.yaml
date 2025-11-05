@@ -1,0 +1,40 @@
+# ---
+id: "cov-over-rag"
+title: "CoV over RAG: Verify Retrieved Claims"
+version: "1.0.0"
+category: "knowledge"
+tags:
+  - RAG
+  - CoV
+  - verification
+model_preferences:
+  system: "Use retrieved passages but verify each claim with an independent sub-question."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - rag-grounded
+# ---
+slots:
+  - name: question
+    label: "Question"
+    type: textarea
+  - name: context
+    label: "Retrieved passages"
+    type: textarea
+prompt: |
+  Context:
+  {{context}}
+  
+  Question: {{question}}
+  
+  1) Draft an answer solely using Context with inline citations.
+  2) Plan 3–5 verification sub-questions targeting the riskiest claims.
+  3) Answer sub-questions independently; if conflict, prefer directly quoted evidence.
+  4) Produce a corrected final answer; list which claims were changed.
+when_to_use: |
+  Use when retrieval quality is uneven and verification is essential.
+failure_modes: |
+  Sub-questions identical to claims; ignoring conflicts; no corrected final.
+acceptance_criteria: |
+  Targeted checks; resolution path documented; citations preserved.

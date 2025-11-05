@@ -1,0 +1,47 @@
+# ---
+id: "thinking-journal"
+title: "Thinking Journal (KGoT-inspired): Persistent Facts Table"
+version: "1.0.0"
+category: "knowledge"
+tags:
+  - knowledge
+  - state
+  - KGoT
+  - memory
+model_preferences:
+  system: "Maintain a structured facts table that persists and is refined over turns."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - rag-grounded
+  - graph-of-thought
+  - chain-of-verification
+# ---
+slots:
+  - name: topic
+    label: "Topic / Investigation"
+    type: text
+  - name: seed_entries
+    label: "Seed entries (optional)"
+    type: textarea
+    help: "One per line as Subject | Predicate | Object | Source"
+prompt: |
+  Topic: {{topic}}
+  
+  Initialize or update a markdown table of facts:
+  Columns: Subject | Predicate | Object | Confidence (0–1) | Source/Note
+  
+  Seed (optional):
+  {{seed_entries}}
+  
+  Rules:
+  - Only add facts supported by prior context or provided sources.
+  - Update confidence upon contradictions; keep a 'Source/Note' for provenance.
+  - After updating the table, answer the user's current question using only entries above and mark gaps as TODO.
+when_to_use: |
+  Use for multi-turn investigations that must accumulate and refine shared facts.
+failure_modes: |
+  Mixing speculation into facts; no confidence tracking; losing provenance.
+acceptance_criteria: |
+  Cumulative table persists; confidence updated; responses reference table rows.

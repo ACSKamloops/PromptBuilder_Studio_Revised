@@ -1,0 +1,56 @@
+# ---
+id: "rag-grounded"
+title: "Retrieval-Augmented Generation (RAG): Context-Bound Answer"
+version: "1.0.0"
+category: "knowledge"
+tags:
+  - RAG
+  - grounding
+  - citations
+model_preferences:
+  system: "You must answer strictly from provided context; if unknown, say 'Not found in provided sources.'"
+  models:
+    - gpt-5-pro
+    - gemini-pro
+  params: {"temperature": 0.1, "max_tokens": 1200}
+combines_with:
+  - chain-of-verification
+  - thinking-with-tables
+  - charts-of-thought
+# ---
+slots:
+  - name: question
+    label: "Question"
+    type: textarea
+  - name: context
+    label: "Retrieved context (paste)"
+    type: textarea
+    help: "Paste the top-k retrieved passages."
+  - name: citation_style
+    label: "Citation style"
+    type: select
+    default: "[Source #]"
+    options:
+      - "[Source #]"
+      - "(Author, Year)"
+      - "Footnotes"
+prompt: |
+  You must answer only using the context below. If the answer is not present, respond with: "Not found in provided sources."
+  
+  Context:
+  ---
+  {{context}}
+  ---
+  
+  Question: {{question}}
+  
+  Instructions:
+  - Quote or paraphrase precisely; no new facts.
+  - Provide inline citations in style: {{citation_style}}.
+  - End with a brief "Sources used" list referencing the context segments.
+when_to_use: |
+  Use whenever factual accuracy and provenance are required; provide explicit retrieved context.
+failure_modes: |
+  Answering beyond context; fabricated citations; mixing memory with provided data.
+acceptance_criteria: |
+  All claims traceable to supplied context; explicit citations; acknowledges unknowns.

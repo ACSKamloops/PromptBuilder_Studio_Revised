@@ -1,0 +1,41 @@
+# ---
+id: "controlled-hallucination"
+title: "Controlled Hallucination for Ideation (CHI)"
+version: "1.0.0"
+category: "ideation"
+tags:
+  - innovation
+  - speculative
+  - brainstorming
+model_preferences:
+  system: "Generate unconventional ideas but label them SPECULATIVE and analyze feasibility."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - multi-perspective-simulation
+  - tree-of-thought
+# ---
+slots:
+  - name: challenge
+    label: "Creative challenge"
+    type: textarea
+  - name: count
+    label: "# of speculative ideas"
+    type: number
+    default: 5
+prompt: |
+  Challenge: {{challenge}}
+  
+  Generate {{count}} SPECULATIVE ideas (label each 'SPECULATIVE'). For each:
+  - 1-paragraph description
+  - Theoretical principles that could make it work
+  - 1–2 main barriers
+  
+  Then shortlist the most feasible idea and suggest first validation steps.
+when_to_use: |
+  Use after conventional options are explored; keep speculative ideas separate from plan.
+failure_modes: |
+  No 'SPECULATIVE' labels; hand-wavy feasibility; no validation steps.
+acceptance_criteria: |
+  Clear labels; concrete principles; feasible shortlist with next steps.

@@ -1,0 +1,46 @@
+# ---
+id: "multi-perspective-simulation"
+title: "Multi-Perspective Simulation (MPS) \u2014 Expert Panel"
+version: "1.0.0"
+category: "planning"
+tags:
+  - MPS
+  - debate
+  - panel
+  - risk
+model_preferences:
+  system: "Simulate distinct expert voices with concrete evidence and constraints."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - tree-of-thought
+  - chain-of-verification
+# ---
+slots:
+  - name: topic
+    label: "Strategy/topic under review"
+    type: textarea
+  - name: personas
+    label: "Personas (comma-separated)"
+    type: text
+    default: "CFO, CMO, COO, Competitor CEO"
+prompt: |
+  Topic: {{topic}}
+  
+  Simulate a structured discussion among: {{personas}}.
+  For each persona:
+  - Assumptions & objectives
+  - Top 3 arguments with evidence or constraints
+  - Key risks and mitigation
+  
+  Synthesis:
+  - Points of agreement/disagreement
+  - Decisive evidence needed
+  - A balanced recommendation
+when_to_use: |
+  Use to pressure-test a plan against multiple stakeholder criteria.
+failure_modes: |
+  Personas speaking generically; no evidence; synthesis that ignores conflicts.
+acceptance_criteria: |
+  Distinct perspectives; evidence-backed; balanced synthesis with clear uncertainties.

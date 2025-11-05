@@ -1,0 +1,40 @@
+# ---
+id: "safety-bias-audit"
+title: "Safety & Bias Audit (Post-Generation)"
+version: "1.0.0"
+category: "ethics"
+tags:
+  - bias
+  - safety
+  - fairness
+model_preferences:
+  system: "Act as a critical fairness auditor; flag and correct biased or unsafe content."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - recursive-self-improvement
+  - chain-of-verification
+# ---
+slots:
+  - name: content
+    label: "Content to audit"
+    type: textarea
+  - name: sensitive_axes
+    label: "Sensitive axes"
+    type: text
+    default: "gender, race, ethnicity, age, disability"
+prompt: |
+  Content:
+  {{content}}
+  
+  Audit Tasks:
+  - Identify biased, stereotyped, or unsafe elements across: {{sensitive_axes}}.
+  - Explain potential harm or unfairness.
+  - Provide a corrected version with neutral, inclusive language and note changes.
+when_to_use: |
+  Use when publishing externally or operating in regulated settings.
+failure_modes: |
+  Generic warnings; no concrete fixes; ignoring subtle stereotyping.
+acceptance_criteria: |
+  Specific flags with rationale; corrected version; concise change log.

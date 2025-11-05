@@ -1,0 +1,58 @@
+# ---
+id: "deep-research-playbook"
+title: "Deep Research Playbook (Role + RAG + CoV)"
+version: "1.0.0"
+category: "playbook"
+tags:
+  - research
+  - RAG
+  - CoV
+  - citations
+model_preferences:
+  system: "Operate as a PhD-level researcher; ground claims; verify and cite."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+  params: {"temperature": 0.2, "max_tokens": 2200}
+combines_with:
+  - rag-grounded
+  - chain-of-verification
+  - thinking-with-tables
+  - charts-of-thought
+# ---
+slots:
+  - name: topic
+    label: "Research topic/question"
+    type: textarea
+  - name: sources
+    label: "Retrieved sources (paste top-k passages)"
+    type: textarea
+  - name: style
+    label: "Citation style"
+    type: select
+    default: "[n]"
+    options:
+      - "[n]"
+      - "(Author, Year)"
+      - "Footnotes"
+prompt: |
+  ROLE: You are a research analyst. Use only the sources below.
+  
+  SOURCES:
+  ---
+  {{sources}}
+  ---
+  
+  TOPIC: {{topic}}
+  
+  Workflow:
+  1) Outline key claims/questions to address.
+  2) For each claim, extract supporting quotes from sources; build a mini table: Claim | Evidence | Source | Confidence.
+  3) Draft analysis with inline citations ({{style}}). Mark any 'Not found' explicitly.
+  4) Run a mini Chain-of-Verification: list 3–5 checks and finalize a corrected version.
+when_to_use: |
+  Use for citable, high-rigor reports that must show evidence for each claim.
+failure_modes: |
+  Claims without evidence; invented references; skipping the verification pass.
+acceptance_criteria: |
+  Evidence table present; citations on major claims; a corrected final draft.

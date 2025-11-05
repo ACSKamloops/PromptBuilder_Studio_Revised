@@ -1,0 +1,18 @@
+id: strategic-planning
+title: Strategic Planning — ToT + MPS + CHI
+steps:
+  - use: tree-of-thought
+    map:
+      goal: "{{user.goal}}"
+      n_ideas: 4
+      criteria: "impact, feasibility, risk, speed"
+  - use: multi-perspective-simulation
+    map:
+      topic: "{{prev.selection}}"
+      personas: "{{user.personas}}"
+  - use: controlled-hallucination
+    map:
+      challenge: "{{prev.synthesis}}"
+      count: 3
+outputs:
+  - plan: "{{last.shortlist_with_next_steps}}"

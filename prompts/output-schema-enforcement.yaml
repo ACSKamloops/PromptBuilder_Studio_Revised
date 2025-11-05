@@ -1,0 +1,38 @@
+# ---
+id: "output-schema-enforcement"
+title: "Output Schema Enforcement (JSON)"
+version: "1.0.0"
+category: "formatting"
+tags:
+  - structure
+  - api
+  - json
+model_preferences:
+  system: "Validate output strictly against the provided JSON schema."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - rag-grounded
+  - data-analysis-review
+# ---
+slots:
+  - name: schema
+    label: "JSON Schema"
+    type: textarea
+  - name: instruction
+    label: "Task instruction"
+    type: textarea
+prompt: |
+  Task: {{instruction}}
+  
+  You MUST output a single JSON object that validates against this schema:
+  {{schema}}
+  
+  If information is missing, set fields to null and include an 'missing' array listing field paths needing data.
+when_to_use: |
+  Use when downstream systems require strict machine-readable output.
+failure_modes: |
+  Non-JSON output; missing fields without 'missing' array; extra keys not allowed by schema.
+acceptance_criteria: |
+  Valid JSON per schema; unknown fields null with 'missing' annotations.

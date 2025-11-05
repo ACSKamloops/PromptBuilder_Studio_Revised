@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PromptTemplate",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "category",
+    "description",
+    "prompt",
+    "slots"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique slug identifier, kebab-case."
+    },
+    "title": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "default": "1.0.0"
+    },
+    "category": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "model_preferences": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "type": "string"
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "temperature": {
+              "type": "number"
+            },
+            "top_p": {
+              "type": "number"
+            },
+            "max_tokens": {
+              "type": "integer"
+            },
+            "stop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "slots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "label",
+          "type"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "textarea",
+              "select",
+              "multiselect",
+              "toggle",
+              "number"
+            ]
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          },
+          "help": {
+            "type": "string"
+          },
+          "default": {},
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "prompt": {
+      "type": "string",
+      "description": "The full prompt with {{placeholders}} for slots."
+    },
+    "postprocessing": {
+      "type": "string",
+      "description": "Optional instructions for client-side or follow-up prompts."
+    },
+    "combines_with": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs of complementary templates."
+    },
+    "when_to_use": {
+      "type": "string"
+    },
+    "failure_modes": {
+      "type": "string"
+    },
+    "acceptance_criteria": {
+      "type": "string"
+    },
+    "example_instantiation": {
+      "type": "object"
+    }
+  }
+}

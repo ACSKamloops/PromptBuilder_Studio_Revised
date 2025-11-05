@@ -1,0 +1,41 @@
+# ---
+id: "strategic-planning-pipeline"
+title: "Strategic Planning: ToT + MPS + CHI"
+version: "1.0.0"
+category: "playbook"
+tags:
+  - strategy
+  - planning
+  - risk
+  - innovation
+model_preferences:
+  system: "Explore \u2192 debate \u2192 innovate; label uncertainties and risks."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - tree-of-thought
+  - multi-perspective-simulation
+  - controlled-hallucination
+# ---
+slots:
+  - name: goal
+    label: "Strategic goal"
+    type: textarea
+  - name: personas
+    label: "Stakeholders"
+    type: text
+    default: "CFO, CMO, COO, Legal"
+prompt: |
+  Goal: {{goal}}
+  
+  Phase 1 — ToT: Generate 3–5 strategic options, evaluate, select.
+  Phase 2 — MPS: Simulate debate among {{personas}}; capture risks and constraints.
+  Phase 3 — CHI: Add 3 SPECULATIVE innovations; evaluate feasibility.
+  Phase 4 — Synthesize: Recommend plan + 90-day action plan + risk register.
+when_to_use: |
+  Use for complex, cross-functional decisions.
+failure_modes: |
+  Options too similar; shallow debate; speculative ideas not labeled.
+acceptance_criteria: |
+  Diverse options; evidence-backed debate; labeled speculative ideas; actionable synthesis.

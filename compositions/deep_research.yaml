@@ -1,0 +1,22 @@
+id: deep-research
+title: Deep Research — RAG + CoV
+steps:
+  - use: rag-grounded
+    map:
+      question: "{{user.topic}}"
+      context: "{{retriever.top_k_passages}}"
+      citation_style: "[n]"
+  - use: provenance-enforcement
+    map:
+      claims: "{{prev.answer.key_claims}}"
+      sources: "{{retriever.top_k_passages}}"
+  - use: chain-of-verification
+    map:
+      query: "{{user.topic}}"
+  - use: recursive-self-improvement
+    map:
+      draft: "{{prev.verified_answer}}"
+      criterion1: "Clarity"
+      criterion2: "Completeness"
+outputs:
+  - final_report: "{{last.improved_draft}}"

@@ -1,0 +1,17 @@
+id: data-review
+title: Data Review — Tables + Charts + Cross-Verify
+steps:
+  - use: thinking-with-tables
+    map:
+      text_blob: "{{user.text}}"
+      columns: "Metric, Period, Value, Evidence"
+      analysis_question: "List anomalies > 15% deviation QoQ."
+  - use: charts-of-thought
+    map:
+      chart_desc: "{{user.chart_ocr}}"
+      question: "Confirm anomalies seen in text appear in chart."
+  - use: chain-of-verification
+    map:
+      query: "Do text and chart figures align? Flag mismatches."
+outputs:
+  - review_summary: "{{last.verified_answer}}"

@@ -1,0 +1,42 @@
+# ---
+id: "thinking-with-tables"
+title: "Thinking with Tables: Extract \u2192 Reason"
+version: "1.0.0"
+category: "text-structuring"
+tags:
+  - tables
+  - extraction
+  - unstructured text
+model_preferences:
+  system: "First extract, then reason. Never answer before the table exists."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - rag-grounded
+  - chain-of-verification
+# ---
+slots:
+  - name: text_blob
+    label: "Source text"
+    type: textarea
+  - name: columns
+    label: "Columns to extract (comma-separated)"
+    type: text
+    default: "Entity, Attribute, Value, Evidence"
+  - name: analysis_question
+    label: "Analysis question"
+    type: text
+    default: "Which entries meet all specified criteria?"
+prompt: |
+  SOURCE TEXT:
+  {{text_blob}}
+  
+  Step 1 — Extract: Build a markdown table with columns: {{columns}}. Include minimal quotes under 'Evidence' to justify entries.
+  Step 2 — Reason: Using only the table, answer: {{analysis_question}}. No extra facts beyond the table.
+when_to_use: |
+  Use for dense prose requiring multi-criteria filtering or comparison.
+failure_modes: |
+  Answering without a table; 'Evidence' missing; table rows not traceable to text.
+acceptance_criteria: |
+  Complete table; evidence snippets; reasoning only over table fields.

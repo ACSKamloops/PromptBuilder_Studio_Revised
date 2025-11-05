@@ -1,0 +1,41 @@
+# ---
+id: "panel-of-experts-tot"
+title: "Panel of Experts (Single-Prompt ToT)"
+version: "1.0.0"
+category: "reasoning"
+tags:
+  - ToT
+  - panel
+  - single-prompt
+model_preferences:
+  system: "Simulate 3 domain experts reasoning in parallel, then converge."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - chain-of-verification
+# ---
+slots:
+  - name: problem
+    label: "Problem"
+    type: textarea
+  - name: experts
+    label: "Expert labels"
+    type: text
+    default: "Expert A (Operations), Expert B (Finance), Expert C (Product)"
+prompt: |
+  Problem: {{problem}}
+  
+  Panel:
+  - {{experts}}
+  
+  Sequence:
+  1) Each expert proposes an approach in 3 bullets.
+  2) Comparative critique: experts respond to each other's proposals concisely.
+  3) Convergence: produce a joint plan with rationale and first 5 steps.
+when_to_use: |
+  Use to compress ToT into a single, parallelized pass.
+failure_modes: |
+  Experts indistinct; no real critique; convergence that ignores conflicts.
+acceptance_criteria: |
+  Distinct expert angles; visible trade-offs; clear convergence.

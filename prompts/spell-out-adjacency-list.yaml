@@ -1,0 +1,38 @@
+# ---
+id: "spell-out-adjacency-list"
+title: "Spell-out Adjacency List (SoAL) for Diagram/Graph"
+version: "1.0.0"
+category: "multimodal"
+tags:
+  - graphs
+  - adjacency
+  - visual
+model_preferences:
+  system: "Enumerate nodes and edges before reasoning over paths or structures."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - chain-of-thought
+# ---
+slots:
+  - name: diagram_desc
+    label: "Diagram description"
+    type: textarea
+    help: "List nodes and visible edges if known."
+  - name: question
+    label: "Graph question"
+    type: text
+    default: "Is there a path from A to F and what is the shortest?"
+prompt: |
+  Diagram (textual description):
+  {{diagram_desc}}
+  
+  Phase 1 — Transcribe structure: Adjacency list (Node -> [Neighbors]).
+  Phase 2 — Analyze: Answer: {{question}} using only the adjacency list; show steps (e.g., BFS/DFS summary). Note assumptions if any.
+when_to_use: |
+  Use for network, flow, or org charts before performing structural reasoning.
+failure_modes: |
+  Missing edges; reasoning without explicit adjacency; assumptions not labeled.
+acceptance_criteria: |
+  Explicit adjacency list; clear traversal; answer justified by listed edges.

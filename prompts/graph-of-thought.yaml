@@ -1,0 +1,54 @@
+# ---
+id: "graph-of-thought"
+title: "Graph of Thought (GoT): Propose\u2013Critique\u2013Synthesize"
+version: "1.0.0"
+category: "reasoning"
+tags:
+  - reasoning
+  - GoT
+  - synthesis
+  - merging
+model_preferences:
+  system: "You orchestrate non-linear reasoning, merging partial solutions and iterating to refine."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+  params: {"temperature": 0.35, "max_tokens": 1800}
+combines_with:
+  - self-refine
+  - rag-grounded
+  - thinking-journal
+# ---
+slots:
+  - name: goal
+    label: "Complex goal / question"
+    type: textarea
+  - name: n_nodes
+    label: "Initial propositions"
+    type: number
+    default: 2
+  - name: conflict_check
+    label: "Require contradiction check?"
+    type: toggle
+    default: true
+prompt: |
+  Goal: {{goal}}
+  
+  Stage 1 — Propose (Nodes):
+  - Generate {{n_nodes}} concise proposition nodes (P1, P2) that address different facets of the goal.
+  - State assumptions explicitly per node.
+  
+  Stage 2 — Critique (Edges):
+  - Identify overlaps, dependencies, and contradictions among P1..Pn.
+  {{#if conflict_check}}- Flag contradictions and missing links explicitly.{{/if}}
+  
+  Stage 3 — Synthesize (Merge/Refine):
+  - Merge nodes into a single synthesized conclusion that resolves conflicts.
+  - Show how each original node contributed to the synthesis.
+  - Provide a short checklist of verifications needed to confirm the synthesis.
+when_to_use: |
+  Use when multiple partial analyses must be merged into a coherent whole.
+failure_modes: |
+  Nodes that are copies; superficial critique; synthesis that ignores contradictions.
+acceptance_criteria: |
+  Clear nodes, explicit relations, and a justified merged conclusion with verification checklist.

@@ -1,0 +1,59 @@
+# ---
+id: "recursive-self-improvement"
+title: "Recursive Self-Improvement (RSIP): Generate\u2013Evaluate\u2013Improve"
+version: "1.0.0"
+category: "self-correction"
+tags:
+  - RSIP
+  - self-refine
+  - editing
+model_preferences:
+  system: "Alternate between author and critic roles; be specific and actionable in feedback."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+  params: {"temperature": 0.3, "max_tokens": 1600}
+combines_with:
+  - chain-of-verification
+  - context-aware-decomposition
+# ---
+slots:
+  - name: draft
+    label: "Initial draft"
+    type: textarea
+  - name: criterion1
+    label: "Critique focus (1)"
+    type: select
+    options:
+      - "Factual accuracy"
+      - "Clarity"
+      - "Structure"
+      - "Completeness"
+      - "Style/Tone"
+  - name: criterion2
+    label: "Critique focus (2)"
+    type: select
+    options:
+      - "Factual accuracy"
+      - "Clarity"
+      - "Structure"
+      - "Completeness"
+      - "Style/Tone"
+prompt: |
+  DRAFT:
+  {{draft}}
+  
+  PHASE A — Critique (focus on {{criterion1}} and {{criterion2}}):
+  - List at least 3 specific issues; cite exact sentences or sections; propose concrete fixes.
+  
+  PHASE B — Improve:
+  - Rewrite the draft addressing each listed issue explicitly.
+  - Keep a short changelog mapping issues -> fixes.
+  
+  PHASE C — (Optional) Second-pass critique for a different focus if needed.
+when_to_use: |
+  Use to iteratively elevate quality with targeted criteria per pass.
+failure_modes: |
+  Vague feedback; rewriting without addressing identified issues; style drift if not controlled.
+acceptance_criteria: |
+  Specific issues with locations; revised draft resolves them; brief changelog provided.

@@ -1,0 +1,36 @@
+# ---
+id: "chain-of-verification"
+title: "Chain of Verification (CoV): Draft\u2013Plan\u2013Execute\u2013Finalize"
+version: "1.0.0"
+category: "self-correction"
+tags:
+  - CoV
+  - verification
+  - fact-check
+model_preferences:
+  system: "Separate drafting from verification; answer sub-questions independently."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+  params: {"temperature": 0.1, "max_tokens": 1800}
+combines_with:
+  - rag-grounded
+  - thinking-with-tables
+# ---
+slots:
+  - name: query
+    label: "Query"
+    type: textarea
+prompt: |
+  Query: {{query}}
+  
+  Step 1 — Draft: Write a concise baseline answer (label it 'Draft').
+  Step 2 — Plan: List 5–7 verification questions that, if answered, would confirm or refute key claims in the Draft.
+  Step 3 — Execute: Answer each verification question *independently*. If unknown, say so.
+  Step 4 — Finalize: Produce a corrected final answer labeled 'Verified Answer', citing which verification results altered the Draft.
+when_to_use: |
+  Use when factual correctness matters; decouple answering from verification.
+failure_modes: |
+  Verification questions too generic; execution biased by draft; final answer ignores conflicts.
+acceptance_criteria: |
+  Concrete verification plan; independent answers; final answer reconciles discrepancies.

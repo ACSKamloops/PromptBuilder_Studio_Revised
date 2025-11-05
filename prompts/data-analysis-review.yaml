@@ -1,0 +1,47 @@
+# ---
+id: "data-analysis-review"
+title: "Data Analysis & Review (Tables + Charts)"
+version: "1.0.0"
+category: "playbook"
+tags:
+  - analysis
+  - tables
+  - charts
+  - QA
+model_preferences:
+  system: "Extract first; analyze second; cross-verify text vs charts."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - thinking-with-tables
+  - charts-of-thought
+  - chain-of-verification
+# ---
+slots:
+  - name: text
+    label: "Data-rich text"
+    type: textarea
+  - name: chart_ocr
+    label: "Chart OCR/desc (optional)"
+    type: textarea
+  - name: question
+    label: "Analysis question"
+    type: text
+    default: "Summarize trends and anomalies, with numbers."
+prompt: |
+  TEXT:
+  {{text}}
+  
+  CHART (optional OCR/desc):
+  {{chart_ocr}}
+  
+  Stage 1 — Extract table(s) from TEXT.
+  Stage 2 — If chart provided, build chart table via Charts-of-Thought and cross-verify overlapping figures.
+  Stage 3 — Answer: {{question}} citing table rows and chart cells explicitly.
+when_to_use: |
+  Use for mixed sources where consistency across modalities matters.
+failure_modes: |
+  Analysis without extraction; no cross-verification; vague statements without numbers.
+acceptance_criteria: |
+  Tables present; cross-check notes; numeric references to cells/rows.

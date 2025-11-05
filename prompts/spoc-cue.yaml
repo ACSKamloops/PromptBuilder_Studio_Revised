@@ -1,0 +1,35 @@
+# ---
+id: "spoc-cue"
+title: "Spontaneous Self-Correction (SPOC) Cue"
+version: "1.0.0"
+category: "self-correction"
+tags:
+  - SPOC
+  - self-correction
+  - single-pass
+model_preferences:
+  system: "Correct yourself mid-answer if you detect an error; transparently mark corrections."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - chain-of-thought
+  - rag-grounded
+# ---
+slots:
+  - name: task
+    label: "Task / Question"
+    type: textarea
+prompt: |
+  Task: {{task}}
+  
+  Instruction:
+  - If, during your reasoning, you notice an error or contradiction, immediately correct it.
+  - Mark corrections with: (Correction: ...), then continue with the corrected path.
+  - Conclude with a brief 'Consistency Check' bullet list.
+when_to_use: |
+  Use as a lightweight guard against mid-stream errors when full CoV is overkill.
+failure_modes: |
+  No explicit correction markers; continuing after an error without fixing it.
+acceptance_criteria: |
+  Corrections clearly marked and resolved; final consistency check present.

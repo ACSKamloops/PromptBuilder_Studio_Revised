@@ -1,0 +1,41 @@
+# ---
+id: "self-consistency"
+title: "Self-Consistency: Sample & Vote"
+version: "1.0.0"
+category: "meta-reasoning"
+tags:
+  - sampling
+  - voting
+  - robustness
+model_preferences:
+  system: "Generate multiple solutions and choose via agreement or scoring rubric."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - chain-of-thought
+# ---
+slots:
+  - name: task
+    label: "Task"
+    type: textarea
+  - name: samples
+    label: "Number of samples"
+    type: number
+    default: 5
+  - name: rubric
+    label: "Voting rubric"
+    type: text
+    default: "correctness, completeness, simplicity"
+prompt: |
+  Task: {{task}}
+  
+  1) Generate {{samples}} diverse solutions (vary reasoning where plausible).
+  2) Score each solution on: {{rubric}} (0–10).
+  3) Output the top-scoring solution with a short consensus note.
+when_to_use: |
+  Use when single-run answers are brittle; multiple paths increase robustness.
+failure_modes: |
+  Identical samples; arbitrary voting; no consensus rationale.
+acceptance_criteria: |
+  Diverse attempts; transparent scoring; selected winner with reasoning.

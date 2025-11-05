@@ -1,0 +1,53 @@
+# ---
+id: "context-aware-decomposition"
+title: "Context-Aware Decomposition (CAD) for Long-Form Writing"
+version: "1.0.0"
+category: "writing"
+tags:
+  - planning
+  - outline
+  - CAD
+  - long-form
+model_preferences:
+  system: "Plan first, then draft; keep alignment with thesis across sections."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+  params: {"temperature": 0.35, "max_tokens": 1800}
+combines_with:
+  - recursive-self-improvement
+  - chain-of-verification
+# ---
+slots:
+  - name: title
+    label: "Document title"
+    type: text
+  - name: thesis
+    label: "Main thesis"
+    type: textarea
+  - name: audience
+    label: "Audience"
+    type: text
+    default: "Policy, Executive, Technical, General"
+  - name: sections
+    label: "Number of sections"
+    type: number
+    default: 5
+prompt: |
+  Title: {{title}}
+  Thesis: {{thesis}}
+  Audience: {{audience}}
+  
+  Phase A — Outline ({{sections}} sections):
+  - Provide section-level theses and 3–5 bullets per section.
+  - Note required sources/data per section.
+  
+  Phase B — Draft Section 1 only (do not draft others):
+  - 500–700 words targeting the audience.
+  - Inline TODOs for any missing data; keep a mini-changelog at end.
+when_to_use: |
+  Use whenever writing >1,000 words to avoid drift and preserve coherence.
+failure_modes: |
+  Outline detached from thesis; drafting all sections prematurely; missing TODO markers.
+acceptance_criteria: |
+  Clear outline; focused draft of first section; TODOs and changelog present.

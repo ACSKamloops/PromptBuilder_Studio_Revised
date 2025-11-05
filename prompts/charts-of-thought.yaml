@@ -1,0 +1,40 @@
+# ---
+id: "charts-of-thought"
+title: "Charts of Thought: Transcribe \u2192 Verify \u2192 Analyze"
+version: "1.0.0"
+category: "multimodal"
+tags:
+  - charts
+  - visual
+  - extraction
+  - verification
+model_preferences:
+  system: "Always extract structured data from the chart before analysis."
+  models:
+    - gpt-5-pro
+    - gemini-pro
+combines_with:
+  - chain-of-verification
+# ---
+slots:
+  - name: chart_desc
+    label: "Chart description or OCR text"
+    type: textarea
+    help: "Paste OCR or describe axes/labels/values."
+  - name: question
+    label: "Analysis question"
+    type: text
+    default: "What is the maximum category and value?"
+prompt: |
+  RAW (desc/OCR):
+  {{chart_desc}}
+  
+  Step 1 — Transcribe: Build a markdown table capturing labels and values.
+  Step 2 — Verify: Check internal consistency (totals, monotonic trends, etc.). Note any uncertainty.
+  Step 3 — Analyze: Answer the question: {{question}} using only the table. Show the calculation or lookup.
+when_to_use: |
+  Use for any chart/graph question where numeric accuracy matters.
+failure_modes: |
+  Skipping transcription; inferring values not present; no verification step.
+acceptance_criteria: |
+  Explicit table; verification notes; answer grounded strictly in extracted table.
