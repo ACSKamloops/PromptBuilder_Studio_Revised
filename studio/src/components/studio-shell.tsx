@@ -462,7 +462,17 @@ useEffect(() => {
             activePresetId={activePreset.id}
             onPresetChange={setActivePresetId}
             flowRecommendations={flowRecommendations}
-            onCreateNode={handleCreateNode}
+            onCreateNode={(baseId, position) => {
+              handleCreateNode(baseId, position);
+              // Auto-connect from currently selected node if any
+              const newId = `${baseId}`; // real id is with random suffix; connect after a tick
+              setTimeout(() => {
+                const last = (document.querySelector('[data-node-instance="extra"]')?.getAttribute('data-testid') ?? '').replace('flow-node-','');
+                if (last && selectedNodeId) {
+                  setUserEdges((prev) => [...prev, { id: `${selectedNodeId}-${last}-${prev.length+1}`, source: selectedNodeId, target: last }]);
+                }
+              }, 0);
+            }}
             onConnectEdge={(c) => {
               if (c.source && c.target) {
                 const s = c.source as string;
@@ -537,7 +547,7 @@ function LibraryPanel({
               <Card
                 key={block.id}
                 data-testid={`block-card-${block.id}`}
-                className={`cursor-grab transition hover:border-primary ${
+                className={`cursor-grab active:cursor-grabbing transition hover:border-primary ${
                   selectedId === block.id ? "border-primary shadow-sm" : ""
                 } ${block.status === "planned" ? "opacity-60" : ""}`}
                 draggable
@@ -545,7 +555,9 @@ function LibraryPanel({
                   e.dataTransfer.setData("application/x-block-id", block.id);
                   e.dataTransfer.setData("text/plain", block.id);
                   e.dataTransfer.effectAllowed = "move";
+                  (e.currentTarget as HTMLElement).classList.add('opacity-80','scale-[0.98]');
                 }}
+                onDragEnd={(e) => (e.currentTarget as HTMLElement).classList.remove('opacity-80','scale-[0.98]')}
                 onClick={() => onSelect(block.id)}
               >
                 <CardHeader className="space-y-1">
@@ -968,6 +980,10 @@ function CanvasPanel({
             fitViewOptions={{ padding: 0.2, minZoom: 0.6, maxZoom: 1.2 }}
             className="bg-muted/30"
             nodeTypes={defaultNodeTypes}
+            nodesDraggable
+            nodesConnectable
+            snapToGrid
+            snapGrid={[16,16]}
             onInit={(inst) => setRf(inst)}
             onConnect={(conn) => onConnectEdge(conn)}
             onDragOver={(e) => {

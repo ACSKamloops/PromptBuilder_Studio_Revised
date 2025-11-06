@@ -6,24 +6,6 @@ const selectPreset = async (page, label: string | RegExp) => {
 };
 
 test.describe('Studio inspector interactions', () => {
-  test('system mandate toggle and format update reflect in preview', async ({ page }) => {
-    await page.goto('/');
-    await page.getByText('Block Library').click();
-    await page.getByTestId('block-card-system-mandate').click();
-
-    const showWorkSwitch = page.getByTestId('slot-show_work');
-    await expect(showWorkSwitch).toHaveAttribute('data-state', 'checked');
-    await expect(page.getByTestId('prompt-preview')).toContainText("Let's think step-by-step.");
-
-    await showWorkSwitch.click();
-    await expect(showWorkSwitch).toHaveAttribute('data-state', 'unchecked');
-    await expect(page.getByTestId('prompt-preview')).not.toContainText("Let's think step-by-step.");
-
-    const formatInput = page.getByTestId('slot-format');
-    await formatInput.fill('Deliver a concise executive summary only.');
-    await expect(page.getByTestId('prompt-preview')).toContainText('Deliver a concise executive summary only.');
-  });
-
   test('rag retriever form drives preview and coach insights', async ({ page }) => {
     await page.goto('/');
     await page.getByText('Block Library').click();

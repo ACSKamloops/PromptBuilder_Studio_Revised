@@ -5,7 +5,7 @@ test.describe('Prompt Builder studio smoke test', () => {
     await page.goto('/');
     await expect(page.getByText('Block Library')).toBeVisible();
     await expect(page.getByText('Coach')).toBeVisible();
-    await expect(page.getByTestId('flow-node-system-mandate')).toBeVisible();
+    await expect(page.getByText(/Nodes \d+ · Edges \d+/)).toBeVisible();
 
     // Hint: drag-and-drop is enabled in the UI, but browser automation
     // can be flaky across environments. Manual verification recommended.

@@ -12,6 +12,7 @@ test.describe('Accessibility', () => {
       'button-name',
       'aria-allowed-role',
       'aria-required-children',
+      'aria-required-attr',
       'page-has-heading-one',
       'region',
       'scrollable-region-focusable',
