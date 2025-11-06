@@ -334,8 +334,8 @@ useEffect(() => {
   };
 
   const handleCreateNode = useCallback(
-    (baseId: string, position: { x: number; y: number }) => {
-      const uid = `${baseId}#${Math.random().toString(36).slice(2, 7)}`;
+    (baseId: string, position: { x: number; y: number }, customId?: string) => {
+      const uid = customId ?? `${baseId}#${Math.random().toString(36).slice(2, 7)}`;
       const descriptor = resolveBlockDescriptor(baseId, metadataById);
       const metadata = descriptor?.metadataId
         ? metadataById.get(descriptor.metadataId)
@@ -378,12 +378,38 @@ useEffect(() => {
   // Expose a test-only hook for creating nodes deterministically
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const w = window as unknown as { __testCreateNode?: (id: string, x?: number, y?: number) => void };
+    const w = window as unknown as {
+      __testCreateNode?: (id: string, x?: number, y?: number) => void;
+      __testReplaceFlow?: (snap: { presetId?: string; extras?: Array<{ id?: string; baseId?: string; position?: { x: number; y: number } }>; edges?: Array<{ source: string; target: string }> }) => void;
+    };
     w.__testCreateNode = (id: string, x = 240, y = 160) => handleCreateNode(id, { x, y });
+    w.__testReplaceFlow = (snap) => {
+      if (snap.presetId && snap.presetId !== activePresetId) {
+        setActivePresetId(snap.presetId);
+      }
+      setExtraNodes([]);
+      setUserEdges([]);
+      // Create nodes with provided ids so edges can match
+      for (const ex of snap.extras ?? []) {
+        const baseId = String(ex.baseId ?? (ex.id ? ex.id.split('#')[0] : 'node'));
+        const id = String(ex.id ?? `${baseId}#${Math.random().toString(36).slice(2,7)}`);
+        const pos = ex.position ?? { x: 240, y: 160 };
+        handleCreateNode(baseId, pos, id);
+      }
+      // Add edges after nodes exist
+      const added: Edge[] = [];
+      for (const e of snap.edges ?? []) {
+        if (e.source && e.target) {
+          added.push({ id: `${e.source}-${e.target}-${added.length + 1}`, source: e.source, target: e.target });
+        }
+      }
+      if (added.length) setUserEdges(added);
+    };
     return () => {
       if ('__testCreateNode' in w) delete w.__testCreateNode;
+      if ('__testReplaceFlow' in w) delete w.__testReplaceFlow;
     };
-  }, [handleCreateNode]);
+  }, [handleCreateNode, activePresetId]);
 
 useEffect(() => {
   if (hasCustomLayout) return;
@@ -686,7 +712,7 @@ function CanvasPanel({
                         if (snap.presetId && snap.presetId !== activePresetId) {
                           onPresetChange(snap.presetId);
                         }
-                        // Replace extras
+                        // Append extras
                         const extras = (snap.extras ?? []).map((item: SnapExtra) => {
                           const id = String(item.id ?? `${item.baseId}#${Math.random().toString(36).slice(2,7)}`);
                           const baseId = String(item.baseId ?? id.split('#')[0]);
@@ -704,6 +730,15 @@ function CanvasPanel({
                         alert('Invalid JSON');
                       }
                     }}>Load (Append)</Button>
+                    <Button variant="secondary" size="sm" onClick={() => {
+                      try {
+                        const snap = JSON.parse(importText) as { presetId?: string; extras?: Array<{ id?: string; baseId?: string; position?: { x: number; y: number } }>; edges?: Array<{ source: string; target: string }> };
+                        (window as unknown as { __testReplaceFlow?: (snap: unknown) => void }).__testReplaceFlow?.(snap);
+                        setFlowDialogOpen(false);
+                      } catch {
+                        alert('Invalid JSON');
+                      }
+                    }}>Load (Replace)</Button>
                   </div>
                 </div>
               </div>
@@ -919,12 +954,16 @@ function InspectorPanel({
           )}
           {metadata?.when_to_use && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                When to use
-              </p>
-              <p className="leading-relaxed whitespace-pre-wrap text-muted-foreground">
-                {metadata.when_to_use}
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quick Guide</p>
+              <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                <li><span className="text-foreground font-medium">What it does:</span> {effectiveDescriptor.description}</li>
+                {metadata.when_to_use && (
+                  <li><span className="text-foreground font-medium">When to use:</span> {metadata.when_to_use.split('\n')[0]}</li>
+                )}
+                {metadata.failure_modes && (
+                  <li><span className="text-foreground font-medium">Watch out:</span> {metadata.failure_modes.split('\n')[0]}</li>
+                )}
+              </ul>
             </div>
           )}
           {metadata?.failure_modes && (
