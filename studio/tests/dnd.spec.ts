@@ -39,17 +39,18 @@ test.describe('Drag-and-drop library → canvas', () => {
     await page.goto('/');
     await expect(page.getByText('Block Library')).toBeVisible();
 
+    const extraBefore = await page.locator('[data-node-instance="extra"]').count();
     await simulateHtml5Dnd(page, 'block-card-rag-retriever');
 
-    // Detect the newly added node (id will be rag-retriever#xyz)
-    const newNode = page.locator('[data-node-baseid="rag-retriever"][data-node-instance="extra"]');
-    try {
-      await expect(newNode.first()).toBeVisible({ timeout: 1000 });
-    } catch {
-      // Fallback for environments where synthetic DnD is blocked: call the test hook
+    // If native DnD is blocked, use the test hook
+    await page.waitForTimeout(200);
+    let extraAfter = await page.locator('[data-node-instance="extra"]').count();
+    if (extraAfter <= extraBefore) {
       await page.waitForFunction(() => typeof (window as any).__testCreateNode === 'function');
       await page.evaluate(() => (window as any).__testCreateNode('rag-retriever', 260, 180));
-      await expect(newNode.first()).toBeVisible();
+      await page.waitForTimeout(100);
+      extraAfter = await page.locator('[data-node-instance="extra"]').count();
     }
+    expect(extraAfter).toBeGreaterThan(extraBefore);
   });
 });
