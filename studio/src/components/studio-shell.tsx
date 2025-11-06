@@ -8,6 +8,8 @@ import ReactFlow, {
   Node,
   NodeProps,
   type ReactFlowInstance,
+  Handle,
+  Position,
   ReactFlowProvider,
 } from "reactflow";
 import "reactflow/dist/style.css";
@@ -263,11 +265,28 @@ useEffect(() => {
     [activePreset, positions, metadataById],
   );
   const nodes = useMemo(() => [...baselineNodes, ...extraNodes], [baselineNodes, extraNodes]);
-  const edges = useMemo(() => buildEdges(activePreset), [activePreset]);
-  const promptSpec = useMemo(
-    () => buildPromptSpec(activePreset, nodeParams, metadataById),
-    [activePreset, nodeParams, metadataById],
-  );
+  const [userEdges, setUserEdges] = useState<Edge[]>([]);
+  const edges = useMemo(() => [...buildEdges(activePreset), ...userEdges], [activePreset, userEdges]);
+  const promptSpec = useMemo(() => {
+    const base = buildPromptSpec(activePreset, nodeParams, metadataById);
+    // Extend with extra nodes and user edges
+    const extra = extraNodes.map((n) => {
+      const metadata = n.data.metadataId ? metadataById.get(n.data.metadataId) : metadataById.get(n.id);
+      return {
+        id: n.id,
+        block: n.data.label,
+        metadataId: n.data.metadataId,
+        title: metadata?.title,
+        params: nodeParams[n.id] ?? {},
+        sourcePath: metadata?.relativePath,
+      };
+    });
+    return {
+      ...base,
+      nodes: [...base.nodes, ...extra],
+      edges: [...base.edges, ...userEdges.map((e) => ({ from: e.source, to: e.target }))],
+    };
+  }, [activePreset, nodeParams, metadataById, extraNodes, userEdges]);
 
   const flowRecommendations = useMemo(
     () => deriveFlowRecommendations(activePreset),
@@ -343,10 +362,10 @@ useEffect(() => {
   // Expose a test-only hook for creating nodes deterministically
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    (window as any).__testCreateNode = (id: string, x = 240, y = 160) =>
-      handleCreateNode(id, { x, y });
+    const w = window as unknown as { __testCreateNode?: (id: string, x?: number, y?: number) => void };
+    w.__testCreateNode = (id: string, x = 240, y = 160) => handleCreateNode(id, { x, y });
     return () => {
-      try { delete (window as any).__testCreateNode; } catch {}
+      if ('__testCreateNode' in w) delete w.__testCreateNode;
     };
   }, [handleCreateNode]);
 
@@ -395,6 +414,15 @@ useEffect(() => {
             activePresetId={activePreset.id}
             onPresetChange={setActivePresetId}
             flowRecommendations={flowRecommendations}
+            onCreateNode={handleCreateNode}
+            onConnectEdge={(c) => {
+              if (c.source && c.target) {
+                setUserEdges((prev) => [
+                  ...prev,
+                  { id: `${c.source}-${c.target}-${prev.length + 1}`, source: c.source, target: c.target },
+                ]);
+              }
+            }}
           />
         </Panel>
         <StyledResizeHandle />
@@ -513,6 +541,7 @@ function CanvasPanel({
   onPresetChange,
   flowRecommendations,
   onCreateNode,
+  onConnectEdge,
 }: {
   onSelectNode: (id: string) => void;
   flow: FlowPreset;
@@ -525,6 +554,7 @@ function CanvasPanel({
   onPresetChange: (id: string) => void;
   flowRecommendations: string[];
   onCreateNode: (baseId: string, position: { x: number; y: number }) => void;
+  onConnectEdge: (conn: { source?: string; target?: string }) => void;
 }) {
   const [rf, setRf] = useState<ReactFlowInstance | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -704,6 +734,7 @@ function CanvasPanel({
             className="bg-muted/30"
             nodeTypes={defaultNodeTypes}
             onInit={(inst) => setRf(inst)}
+            onConnect={(conn) => onConnectEdge(conn)}
             onDragOver={(e) => {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
@@ -1242,13 +1273,17 @@ function buildInitialNodeParams(
 const defaultNodeTypes = {
   default: memo(function FlowCanvasNode({ id, data, selected }: NodeProps<FlowNodeData>) {
     return (
-      <CanvasNodeCard
-        id={id}
-        label={data.label}
-        summary={data.summary}
-        category={data.category}
-        selected={selected}
-      />
+      <div className="relative">
+        <Handle type="target" position={Position.Left} id="in" style={{ top: '50%' }} />
+        <CanvasNodeCard
+          id={id}
+          label={data.label}
+          summary={data.summary}
+          category={data.category}
+          selected={selected}
+        />
+        <Handle type="source" position={Position.Right} id="out" style={{ top: '50%' }} />
+      </div>
     );
   }),
 };

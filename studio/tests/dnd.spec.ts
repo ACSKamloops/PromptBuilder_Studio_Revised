@@ -46,8 +46,11 @@ test.describe('Drag-and-drop library → canvas', () => {
     await page.waitForTimeout(200);
     let extraAfter = await page.locator('[data-node-instance="extra"]').count();
     if (extraAfter <= extraBefore) {
-      await page.waitForFunction(() => typeof (window as any).__testCreateNode === 'function');
-      await page.evaluate(() => (window as any).__testCreateNode('rag-retriever', 260, 180));
+    await page.waitForFunction(() => typeof (window as unknown as { __testCreateNode?: ((id: string, x?: number, y?: number) => void) }).__testCreateNode === 'function');
+    await page.evaluate(() => {
+      const w = window as unknown as { __testCreateNode?: (id: string, x?: number, y?: number) => void };
+      w.__testCreateNode?.('rag-retriever', 260, 180);
+    });
       await page.waitForTimeout(100);
       extraAfter = await page.locator('[data-node-instance="extra"]').count();
     }
