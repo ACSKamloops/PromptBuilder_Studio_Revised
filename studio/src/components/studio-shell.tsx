@@ -307,6 +307,22 @@ useEffect(() => {
     URL.revokeObjectURL(url);
   }, [activePreset.id, promptSpec]);
 
+  // Flow snapshot exporter
+  const flowSnapshot = useMemo(() => {
+    const extras = extraNodes.map((n) => ({
+      id: n.id,
+      baseId: (n.id.includes('#') ? n.id.split('#')[0] : n.id),
+      position: n.position,
+      params: nodeParams[n.id] ?? {},
+    }));
+    const uEdges = userEdges.map((e) => ({ source: e.source, target: e.target }));
+    return {
+      presetId: activePreset.id,
+      extras,
+      edges: uEdges,
+    };
+  }, [extraNodes, userEdges, nodeParams, activePreset.id]);
+
   const handleParamChange = (blockId: string, key: string, value: unknown) => {
     setNodeParams((prev) => ({
       ...prev,
@@ -558,6 +574,8 @@ function CanvasPanel({
 }) {
   const [rf, setRf] = useState<ReactFlowInstance | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [flowDialogOpen, setFlowDialogOpen] = useState(false);
+  const [importText, setImportText] = useState<string>("");
   const [isRunning, setIsRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunPreviewResponse | null>(null);
@@ -631,6 +649,66 @@ function CanvasPanel({
           <span className="text-xs text-muted-foreground">
             Nodes {nodes.length} · Edges {edges.length}
           </span>
+          <Dialog open={flowDialogOpen} onOpenChange={setFlowDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">Flow (Save/Load)</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Flow Save / Load</DialogTitle>
+                <DialogDescription>Copy your current flow or paste a JSON snapshot to load.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Export JSON</p>
+                  <textarea
+                    data-testid="flow-export-json"
+                    readOnly
+                    className="w-full h-40 rounded border bg-muted/40 p-2 text-xs font-mono"
+                    value={JSON.stringify({ presetId: activePresetId, extras: nodes.filter(n => n.id.includes('#')).map(n => ({ id: n.id, baseId: n.id.split('#')[0], position: n.position })), edges: edges.map(e => ({ source: e.source, target: e.target })) }, null, 2)}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Import JSON</p>
+                  <textarea
+                    data-testid="flow-import-json"
+                    className="w-full h-32 rounded border bg-card p-2 text-xs font-mono"
+                    placeholder='{"presetId":"baseline-deep-research","extras":[{"id":"rag-retriever#123","baseId":"rag-retriever","position":{"x":320,"y":160}}],"edges":[{"source":"rag-retriever#123","target":"cov"}]}'
+                    value={importText}
+                    onChange={(e) => setImportText(e.target.value)}
+                  />
+                  <div className="mt-2 flex gap-2">
+                    <Button size="sm" onClick={() => {
+                      try {
+                        type SnapExtra = { id?: string; baseId?: string; position?: { x: number; y: number } };
+                        type Snap = { presetId?: string; extras?: SnapExtra[]; edges?: Array<{ source: string; target: string }> };
+                        const snap = JSON.parse(importText) as Snap;
+                        if (snap.presetId && snap.presetId !== activePresetId) {
+                          onPresetChange(snap.presetId);
+                        }
+                        // Replace extras
+                        const extras = (snap.extras ?? []).map((item: SnapExtra) => {
+                          const id = String(item.id ?? `${item.baseId}#${Math.random().toString(36).slice(2,7)}`);
+                          const baseId = String(item.baseId ?? id.split('#')[0]);
+                          const pos = item.position ?? { x: 240, y: 160 };
+                          return { id, baseId, pos };
+                        });
+                        // Use the shell's test hook to create nodes in place
+                        // Set positions via events
+                        for (const ex of extras) {
+                          (window as unknown as { __testCreateNode?: (id: string, x?: number, y?: number) => void }).__testCreateNode?.(ex.baseId, ex.pos.x, ex.pos.y);
+                        }
+                        // Edges cannot be replayed safely here; user can rewire visually after load.
+                        setFlowDialogOpen(false);
+                      } catch {
+                        alert('Invalid JSON');
+                      }
+                    }}>Load (Append)</Button>
+                  </div>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
           <Button variant="outline" size="sm" onClick={onExport}>
             Export PromptSpec
           </Button>
