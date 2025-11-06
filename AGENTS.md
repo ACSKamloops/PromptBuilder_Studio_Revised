@@ -88,3 +88,19 @@ Use this map when designing the drag-and-drop experience: each agent becomes a n
 **Runtime & UI Notes**
 - LangGraph-backed run preview surfaces guidance, failure modes, acceptance criteria, and params for each agent.
 - The Inspector Coach panel pulls `when_to_use`, `failure_modes`, `combines_with`, and composition steps directly from these YAML definitions.
+
+## Studio & Testing Notes
+- Friendly labels: the Block Library uses plain-English names (e.g., "Role & Rules", "Your Task", "Use Your Sources (RAG)", "Avoid Duplicates", "Verify Facts", "Make a Table"). Keep these stable for a non-expert audience.
+- Drag & Drop: HTML5 DnD from the Block Library onto the React Flow canvas creates extra nodes. In tests, a deterministic helper `window.__testCreateNode(baseId, x, y)` is exposed to create nodes when native DnD is flaky.
+- Edges: Nodes expose left/right handles; connecting them emits a user edge that appears in the compiled PromptSpec and the header edge count.
+- Save/Load: Use the Flow dialog to export/import a snapshot (`{ presetId, extras, edges }`). Tests also use `window.__testReplaceFlow(snapshot)` to reconstruct graphs.
+- Selectors: E2E hooks are stable and documented:
+  - Block cards: `data-testid="block-card-<blockId>"`
+  - Flow select: `data-testid="flow-select"`
+  - Node cards: `data-testid="flow-node-<id>"`, with `data-node-baseid` and `data-node-instance` attributes
+  - Prompt preview: `data-testid="prompt-preview"`
+- Commands:
+  - Dev: `cd studio && npm run dev`
+  - Unit: `npm run test:unit`
+  - E2E: `npx playwright install --with-deps && npm run test:e2e -- --reporter=line`
+  - Build/Start: `npm run build && npm run start`
