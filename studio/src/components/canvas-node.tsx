@@ -20,10 +20,14 @@ export function CanvasNodeCard({
 }: CanvasNodeCardProps) {
   const theme = getNodeTheme(category);
   const Icon = theme.icon;
+  const baseId = id.includes('#') ? id.split('#')[0] : id;
+  const instance = id.includes('#') ? 'extra' : 'preset';
 
   return (
     <article
       data-testid={`flow-node-${id}`}
+      data-node-baseid={baseId}
+      data-node-instance={instance}
       className={cn(
         "group relative rounded-xl border px-4 py-3 shadow-sm transition-all duration-200",
         theme.base,

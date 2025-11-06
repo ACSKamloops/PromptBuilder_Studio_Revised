@@ -522,6 +522,25 @@ function CanvasPanel({
   const [runError, setRunError] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunPreviewResponse | null>(null);
 
+  // Test helper: allow E2E to create nodes deterministically without drag events
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const anyWin = window as any;
+    anyWin.__testCreateNode = (id: string, x = 240, y = 160) => {
+      window.dispatchEvent(new CustomEvent('test-create-node', { detail: { id, x, y } }));
+    };
+    const handler = (e: Event) => {
+      const ce = e as CustomEvent;
+      const { id, x, y } = (ce.detail ?? {}) as { id: string; x: number; y: number };
+      if (id) onCreateNode(id, { x, y });
+    };
+    window.addEventListener('test-create-node', handler as EventListener);
+    return () => {
+      window.removeEventListener('test-create-node', handler as EventListener);
+      try { delete (window as any).__testCreateNode; } catch {}
+    };
+  }, [onCreateNode]);
+
   const triggerRunPreview = useCallback(async () => {
     setDialogOpen(true);
     setIsRunning(true);
