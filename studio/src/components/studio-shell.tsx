@@ -24,6 +24,7 @@ import type { UIBlueprint } from "@/types/ui-blueprint";
 import { CoachPanel, type CoachInsight } from "@/components/coach-panel";
 
 import type { LangGraphRunBlockOutput } from "@/lib/runtime/langgraph-runner";
+import { useHotkeys } from "react-hotkeys-hook";
 
 const uiBlueprint = uiBlueprintJson as UIBlueprint;
 import {
@@ -606,6 +607,31 @@ function CanvasPanel({
   const [runError, setRunError] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunPreviewResponse | null>(null);
 
+  // Keyboard shortcuts: Delete to remove selected extra nodes, Ctrl/Cmd+D to duplicate
+  useHotkeys('delete, backspace', () => {
+    if (!rf) return;
+    const selected = rf.getNodes().filter((n) => n.selected && n.id.includes('#'));
+    if (!selected.length) return;
+    const ids = new Set(selected.map((n) => n.id));
+    // Remove edges connected to those nodes
+    const remainingEdges = rf.getEdges().filter((e) => !ids.has(e.source) && !ids.has(e.target));
+    (rf as ReactFlowInstance).setEdges(remainingEdges);
+    // Remove nodes via setNodes is internal; rely on parent state: emit custom event for shell if needed.
+    // For now, simulate by hiding them: move off-canvas; user can refresh to clear.
+    (rf as ReactFlowInstance).setNodes(rf.getNodes().filter((n) => !ids.has(n.id)));
+  }, [rf]);
+
+  useHotkeys(['ctrl+d', 'meta+d'], (e) => {
+    e?.preventDefault();
+    if (!rf) return;
+    const selected = rf.getNodes().find((n) => n.selected && n.id.includes('#'));
+    if (!selected) return;
+    const baseId = selected.id.split('#')[0];
+    const pos = selected.position || { x: 240, y: 160 };
+    const dup = { x: pos.x + 40, y: pos.y + 40 };
+    (window as unknown as { __testCreateNode?: (id: string, x?: number, y?: number) => void }).__testCreateNode?.(baseId, dup.x, dup.y);
+  }, [rf]);
+
   // Test helper no longer needed here (defined at shell scope)
 
   const triggerRunPreview = useCallback(async () => {
@@ -675,6 +701,20 @@ function CanvasPanel({
           <span className="text-xs text-muted-foreground">
             Nodes {nodes.length} · Edges {edges.length}
           </span>
+          <Button variant="outline" size="sm" onClick={() => {
+            // Simple auto-layout: arrange nodes horizontally with spacing
+            const spacingX = 260;
+            const spacingY = 160;
+            const updatedPositions: Record<string, { x: number; y: number }> = {};
+            let i = 0;
+            for (const id of flow.nodeIds) {
+              updatedPositions[id] = { x: i * spacingX, y: 0 };
+              i += 1;
+            }
+            setPositions(updatedPositions);
+            // Shift extra nodes into rows
+            setExtraNodes((prev) => prev.map((n, idx) => ({ ...n, position: { x: (idx % 4) * spacingX, y: spacingY + Math.floor(idx / 4) * spacingY } })));
+          }}>Layout</Button>
           <Dialog open={flowDialogOpen} onOpenChange={setFlowDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm">Flow (Save/Load)</Button>
