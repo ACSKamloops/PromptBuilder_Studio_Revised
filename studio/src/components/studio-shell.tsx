@@ -52,6 +52,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { OnboardingDialog } from "@/components/onboarding-dialog";
 
 interface RunPreviewResponse {
   runId: string;
@@ -410,19 +411,9 @@ useEffect(() => {
       }
       if (added.length) setUserEdges(added);
     };
-    w.__testDeleteFirstExtra = () => {
-      if (!rf) return;
-      const all = rf.getNodes();
-      const extra = all.find((n) => n.id.includes('#'));
-      if (!extra) return;
-      const remainingEdges = rf.getEdges().filter((e) => e.source !== extra.id && e.target !== extra.id);
-      rf.setEdges(remainingEdges);
-      rf.setNodes(all.filter((n) => n.id !== extra.id));
-    };
     return () => {
       if ('__testCreateNode' in w) delete w.__testCreateNode;
       if ('__testReplaceFlow' in w) delete w.__testReplaceFlow;
-      if ('__testDeleteFirstExtra' in w) delete w.__testDeleteFirstExtra;
     };
   }, [handleCreateNode, activePresetId]);
 
@@ -617,11 +608,14 @@ function CanvasPanel({
 }) {
   const [rf, setRf] = useState<ReactFlowInstance | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [flowDialogOpen, setFlowDialogOpen] = useState(false);
   const [importText, setImportText] = useState<string>("");
   const [isRunning, setIsRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunPreviewResponse | null>(null);
+  const [streaming, setStreaming] = useState(false);
+  const [liveLogs, setLiveLogs] = useState<string[]>([]);
 
   // Keyboard shortcuts: Delete to remove selected extra nodes, Ctrl/Cmd+D to duplicate
   useHotkeys('delete, backspace', () => {
@@ -671,28 +665,55 @@ function CanvasPanel({
     setIsRunning(true);
     setRunError(null);
     setRunResult(null);
+    setLiveLogs([]);
     try {
-      const response = await fetch("/api/run", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ promptSpec }),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.error ?? `Run preview failed (${response.status}).`);
+      if (!streaming) {
+        const response = await fetch("/api/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ promptSpec }),
+        });
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({}));
+          throw new Error(errorBody.error ?? `Run preview failed (${response.status}).`);
+        }
+        const data = (await response.json()) as RunPreviewResponse;
+        setRunResult(data);
+      } else {
+        const response = await fetch("/api/run/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ promptSpec }),
+        });
+        if (!response.ok || !response.body) throw new Error(`Run stream failed (${response.status}).`);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buffer.indexOf("\n")) >= 0) {
+            const line = buffer.slice(0, idx).trim();
+            buffer = buffer.slice(idx + 1);
+            if (!line) continue;
+            setLiveLogs((prev) => [...prev, line]);
+            try {
+              const evt = JSON.parse(line);
+              if (evt.type === "result") setRunResult(evt.data as RunPreviewResponse);
+            } catch {
+              // ignore
+            }
+          }
+        }
       }
-
-      const data = (await response.json()) as RunPreviewResponse;
-      setRunResult(data);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : "Unknown error during run preview.");
     } finally {
       setIsRunning(false);
     }
-  }, [promptSpec]);
+  }, [promptSpec, streaming]);
 
   return (
     <div className="flex h-full flex-col">
@@ -733,6 +754,7 @@ function CanvasPanel({
           <span className="text-xs text-muted-foreground">
             Nodes {nodes.length} · Edges {edges.length}
           </span>
+          <Button variant="ghost" size="sm" onClick={() => setHelpOpen(true)}>Help</Button>
           <Button variant="outline" size="sm" onClick={() => {
             // Simple auto-layout on the canvas without mutating parent layout state
             const spacingX = 260;
@@ -838,7 +860,7 @@ function CanvasPanel({
                 {isRunning ? "Running…" : "Run (Preview)"}
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-xl">
               <DialogHeader>
                 <DialogTitle>Run Preview</DialogTitle>
                 <DialogDescription>
@@ -846,6 +868,12 @@ function CanvasPanel({
                   endpoint using the compiled PromptSpec payload.
                 </DialogDescription>
               </DialogHeader>
+              <div className="mb-2 flex items-center gap-2">
+                <label className="text-xs text-muted-foreground flex items-center gap-2">
+                  <input type="checkbox" checked={streaming} onChange={(e) => setStreaming(e.currentTarget.checked)} />
+                  Stream logs
+                </label>
+              </div>
               {isRunning && (
                 <p className="text-sm text-muted-foreground">Running preview…</p>
               )}
@@ -911,13 +939,22 @@ function CanvasPanel({
                       </div>
                     ))}
                   </div>
-                  <pre className="max-h-64 overflow-auto rounded bg-muted p-3 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap font-mono">
+                  <pre className="max-h-64 overflow-auto rounded bg-muted p-3 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap font-mono" data-testid="prompt-preview">
                     {JSON.stringify(runResult, null, 2)}
                   </pre>
-                </div>
-              )}
-            </DialogContent>
-          </Dialog>
+                  {streaming && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live logs</p>
+                      <pre className="max-h-40 overflow-auto rounded bg-muted p-3 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap font-mono">
+                        {liveLogs.join("\n")}
+                      </pre>
+                    </div>
+                  )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+        <OnboardingDialog openFromHelp={helpOpen} onClose={() => setHelpOpen(false)} />
         </div>
       </header>
       <Separator />
