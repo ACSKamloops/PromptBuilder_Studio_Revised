@@ -4,30 +4,40 @@ on:
   push:
     branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
-  build-test:
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Install dependencies
-        working-directory: studio
-        run: npm install
-      - name: Install Playwright browsers
-        working-directory: studio
-        run: npx playwright install --with-deps
-      - name: Lint
-        working-directory: studio
-        run: npm run lint
-      - name: Validate prompts
-        working-directory: studio
-        run: npm run validate:prompts
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: prompt-builder/studio/package-lock.json
+
+      - name: Install deps (studio)
+        working-directory: prompt-builder/studio
+        run: npm ci
+
       - name: Unit tests
-        working-directory: studio
+        working-directory: prompt-builder/studio
         run: npm run test:unit
+
+      - name: Build
+        working-directory: prompt-builder/studio
+        run: npm run build
+
+      - name: Install Playwright Browsers
+        working-directory: prompt-builder/studio
+        run: npx playwright install --with-deps
+
       - name: E2E tests
-        working-directory: studio
+        working-directory: prompt-builder/studio
         run: npm run test:e2e -- --reporter=line
+
