@@ -7,6 +7,7 @@ import ReactFlow, {
   Edge,
   Node,
   NodeProps,
+  type ReactFlowInstance,
   ReactFlowProvider,
 } from "reactflow";
 import "reactflow/dist/style.css";
@@ -208,6 +209,9 @@ export default function StudioShell({ library, presets, initialPresetId }: Studi
     initialParams,
   );
 
+  // Extra nodes created via drag-and-drop
+  const [extraNodes, setExtraNodes] = useState<FlowNode[]>([]);
+
   useEffect(() => {
     if (typeof window === "undefined") {
       setNodeParams(initialParams);
@@ -254,10 +258,11 @@ useEffect(() => {
   window.localStorage.setItem(`${storageKey}:positions`, JSON.stringify(positions));
 }, [positions, storageKey, activePreset.nodeIds.length]);
 
-  const nodes = useMemo(
+  const baselineNodes = useMemo(
     () => buildNodes(activePreset, positions, metadataById),
     [activePreset, positions, metadataById],
   );
+  const nodes = useMemo(() => [...baselineNodes, ...extraNodes], [baselineNodes, extraNodes]);
   const edges = useMemo(() => buildEdges(activePreset), [activePreset]);
   const promptSpec = useMemo(
     () => buildPromptSpec(activePreset, nodeParams, metadataById),
@@ -292,6 +297,48 @@ useEffect(() => {
       },
     }));
   };
+
+  const handleCreateNode = useCallback(
+    (baseId: string, position: { x: number; y: number }) => {
+      const uid = `${baseId}#${Math.random().toString(36).slice(2, 7)}`;
+      const descriptor = resolveBlockDescriptor(baseId, metadataById);
+      const metadata = descriptor?.metadataId
+        ? metadataById.get(descriptor.metadataId)
+        : metadataById.get(baseId);
+
+      if (metadata?.slots?.length) {
+        setNodeParams((prev) => ({
+          ...prev,
+          [uid]: Object.fromEntries(
+            metadata.slots.map((s) => [s.name, s.default ?? (s.type === "number" ? 0 : "")]),
+          ),
+        }));
+      }
+
+      setExtraNodes((prev) => [
+        ...prev,
+        {
+          id: uid,
+          position,
+          type: "default",
+          data: {
+            label: descriptor?.name ?? metadata?.title ?? baseId,
+            summary:
+              descriptor?.description ??
+              metadata?.when_to_use ??
+              metadata?.failure_modes ??
+              metadata?.acceptance_criteria ??
+              "",
+            category: descriptor?.category ?? metadata?.category,
+            metadataId: metadata?.id ?? descriptor?.metadataId ?? baseId,
+          },
+        } as FlowNode,
+      ]);
+
+      setSelectedNodeId(uid);
+    },
+    [metadataById],
+  );
 
 useEffect(() => {
   if (hasCustomLayout) return;
@@ -373,6 +420,18 @@ function LibraryPanel({
   onSelect: (id: string) => void;
   metadataMap: Map<string, PromptMetadata>;
 }) {
+  const friendly = (id: string, fallback: string) => {
+    const map: Record<string, string> = {
+      "system-mandate": "Role & Rules",
+      "user-task": "Your Task",
+      "rag-retriever": "Use Your Sources (RAG)",
+      "exclusion-check": "Avoid Duplicates",
+      "cov": "Verify Facts",
+      "table-formatter": "Make a Table",
+      "psa": "Robustness Check",
+    };
+    return map[id] ?? fallback;
+  };
   return (
     <div className="flex h-full flex-col">
       <div className="px-4 py-3">
@@ -390,14 +449,20 @@ function LibraryPanel({
               <Card
                 key={block.id}
                 data-testid={`block-card-${block.id}`}
-                className={`cursor-pointer transition hover:border-primary ${
+                className={`cursor-grab transition hover:border-primary ${
                   selectedId === block.id ? "border-primary shadow-sm" : ""
                 } ${block.status === "planned" ? "opacity-60" : ""}`}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("application/x-block-id", block.id);
+                  e.dataTransfer.setData("text/plain", block.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
                 onClick={() => onSelect(block.id)}
               >
                 <CardHeader className="space-y-1">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    {block.name}
+                    {friendly(block.id, block.name)}
                     {block.status === "planned" && (
                       <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                         Planned
@@ -405,7 +470,9 @@ function LibraryPanel({
                     )}
                   </CardTitle>
                   <CardDescription className="text-xs leading-relaxed">
-                    {block.description}
+                    {metadata?.when_to_use
+                      ? metadata.when_to_use.split("\n")[0]
+                      : block.description}
                   </CardDescription>
                   {metadata && metadata.when_to_use && (
                     <p className="text-[11px] leading-relaxed text-muted-foreground">
@@ -435,6 +502,7 @@ function CanvasPanel({
   activePresetId,
   onPresetChange,
   flowRecommendations,
+  onCreateNode,
 }: {
   onSelectNode: (id: string) => void;
   flow: FlowPreset;
@@ -446,7 +514,9 @@ function CanvasPanel({
   activePresetId: string;
   onPresetChange: (id: string) => void;
   flowRecommendations: string[];
+  onCreateNode: (baseId: string, position: { x: number; y: number }) => void;
 }) {
+  const [rf, setRf] = useState<ReactFlowInstance | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
@@ -621,6 +691,21 @@ function CanvasPanel({
             fitViewOptions={{ padding: 0.2, minZoom: 0.6, maxZoom: 1.2 }}
             className="bg-muted/30"
             nodeTypes={defaultNodeTypes}
+            onInit={(inst) => setRf(inst)}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const baseId = e.dataTransfer.getData("application/x-block-id") ||
+                e.dataTransfer.getData("text/plain");
+              if (!baseId) return;
+              const bounds = (e.currentTarget as Element).getBoundingClientRect();
+              const screenPos = { x: e.clientX - bounds.left, y: e.clientY - bounds.top };
+              const position = rf ? rf.project(screenPos) : { x: screenPos.x, y: screenPos.y };
+              onCreateNode(baseId, position);
+            }}
           >
             <Background gap={24} size={1} color="#d4d4d8" />
             <Controls showInteractive={false} />
@@ -646,10 +731,11 @@ function InspectorPanel({
   promptSpec: PromptSpec;
   blueprint: UIBlueprint;
 }) {
-  const descriptor = resolveBlockDescriptor(selectedBlockId, metadataMap);
+  const baseId = selectedBlockId.split("#")[0];
+  const descriptor = resolveBlockDescriptor(baseId, metadataMap);
   const metadata =
     (descriptor?.metadataId ? metadataMap.get(descriptor.metadataId) : undefined) ??
-    metadataMap.get(selectedBlockId);
+    metadataMap.get(baseId);
 
   if (!descriptor && !metadata) {
     return (
@@ -662,8 +748,8 @@ function InspectorPanel({
   const effectiveDescriptor =
     descriptor ??
     ({
-      id: selectedBlockId,
-      name: metadata?.title ?? selectedBlockId,
+      id: baseId,
+      name: metadata?.title ?? baseId,
       category: metadata?.category ?? "Structure",
       description: metadata?.when_to_use ?? "Prompt loaded from composition metadata.",
       status: "available",
