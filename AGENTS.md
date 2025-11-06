@@ -1,6 +1,6 @@
 # Prompt Agents Catalog
 
-This catalog helps you navigate the reusable “agents” that power the Prompt Builder. Each agent is a structured prompt template with defined slots, model defaults, and guardrails for use in the visual editor or programmatic pipelines. Use it as a reference when teaching prompt strategy or assembling new workflows.
+This catalog helps you navigate the reusable “agents” that power the Prompt Builder. Each agent is a structured prompt template with defined slots, model defaults, and guardrails for use in the visual editor or programmatic pipelines. Use it as a reference when teaching prompt strategy, assembling new workflows, and wiring research-backed combinations into the drag-and-drop studio. In the UI, these agents surface inside a polished React Flow canvas, shadcn/ui panel system, and command palette so they feel modern and approachable.
 
 ## How to Read
 - **Path** — Location of the YAML asset.
@@ -67,6 +67,8 @@ This catalog helps you navigate the reusable “agents” that power the Prompt 
 - **Output Schema Enforcement** — `prompts/output-schema-enforcement.yaml`  
   Focus: JSON contract adherence. Highlights: Schema slot plus validation guidance.
 
+> **Planned extensions:** GraphRAG retrieval blocks, SPOC single-pass verification profiles, PSA/Eval harness nodes, and UI-specific wrappers (canvas nodes, inspector forms, command palette actions) will join the catalog as the React app scaffolding lands. Their documentation will live alongside these agents for consistency.
+
 ## Ready-Made Compositions
 - **Deep Research** — `compositions/deep_research.yaml`  
   Chains RAG grounding with verification passes for rigorous reports.
@@ -81,3 +83,8 @@ This catalog helps you navigate the reusable “agents” that power the Prompt 
 - **Reproducibility Protocol** — `reproducibility/*` ties each agent back to evaluation and logging practices.
 
 Use this map when designing the drag-and-drop experience: each agent becomes a node with defined inputs/outputs, while compositions showcase the higher-order flows learners can explore and remix.
+
+
+**Runtime & UI Notes**
+- LangGraph-backed run preview surfaces guidance, failure modes, acceptance criteria, and params for each agent.
+- The Inspector Coach panel pulls `when_to_use`, `failure_modes`, `combines_with`, and composition steps directly from these YAML definitions.

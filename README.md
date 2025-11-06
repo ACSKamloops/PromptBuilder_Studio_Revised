@@ -31,6 +31,15 @@ A modern, educational prompt design workspace that teaches **reasoning architect
 3. **Learning Mode** — Inline tutorials, guided labs, and reflection checklists tied to the reproducibility rubric.
 4. **Verification Tooling** — Visual diffing of outputs, acceptance-criteria tracking, and structured logging hooks.
 
+## Development Workspace
+- `studio/` — Next.js + React Flow prototype for the visual editor. Run `npm install` (already executed) and `npm run dev` from this directory.
+- Install Playwright browsers once with `npx playwright install` and run smoke tests via `npm run test:e2e` inside `studio/`.
+- Run unit tests with `npm run test:unit` and schema checks with `npm run validate:prompts` before submitting changes.
+- The studio already supports YAML-driven block metadata, slot forms, prompt previews, PromptSpec JSON viewer/export, an auto-laid React Flow canvas, and a run-preview dialog that hits the `/api/run` dry-run endpoint for the Deep Research baseline.
+- Inspector controls respect `ui/ui.blueprint.json` (Select/Textarea/etc. plus contextual hints), flows persist node state to local storage, composition YAML files are available as selectable presets, and the Inspector includes a Coach panel summarizing `when_to_use`, `failure_modes`, `combines_with`, and composition steps. Run preview hits `/api/run`, which now invokes a LangGraph stub to simulate execution, ready to be swapped for a full graph runtime.
+- Shared prompt assets live at the repository root (`prompts/`, `compositions/`, `schemas/`); the UI will ingest these via loaders in upcoming milestones.
+- Content map: see `docs/STARTER_CONTENT.md` for how starter assets (prompts, compositions, schema, UI blueprint, reproducibility) plug into the builder.
+
 ## Contributing
 The repository is prepped for a greenfield React/TypeScript client. Contributions that add schema-aware components, data loaders, or reproducibility utilities are welcome. Please coordinate major architectural changes with project maintainers.
 

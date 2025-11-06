@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: studio
+        run: npm install
+      - name: Install Playwright browsers
+        working-directory: studio
+        run: npx playwright install --with-deps
+      - name: Lint
+        working-directory: studio
+        run: npm run lint
+      - name: Validate prompts
+        working-directory: studio
+        run: npm run validate:prompts
+      - name: Unit tests
+        working-directory: studio
+        run: npm run test:unit
+      - name: E2E tests
+        working-directory: studio
+        run: npm run test:e2e -- --reporter=line
