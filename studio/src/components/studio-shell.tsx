@@ -346,7 +346,10 @@ useEffect(() => {
         setNodeParams((prev) => ({
           ...prev,
           [uid]: Object.fromEntries(
-            metadata.slots.map((s) => [s.name, s.default ?? (s.type === "number" ? 0 : "")]),
+            (metadata?.slots ?? []).map((s) => [
+              s.name,
+              s.default ?? (s.type === "number" ? 0 : ""),
+            ]),
           ),
         }));
       }
@@ -460,9 +463,11 @@ useEffect(() => {
             onCreateNode={handleCreateNode}
             onConnectEdge={(c) => {
               if (c.source && c.target) {
+                const s = c.source as string;
+                const t = c.target as string;
                 setUserEdges((prev) => [
                   ...prev,
-                  { id: `${c.source}-${c.target}-${prev.length + 1}`, source: c.source, target: c.target },
+                  { id: `${s}-${t}-${prev.length + 1}` , source: s, target: t },
                 ]);
               }
             }}
@@ -597,7 +602,7 @@ function CanvasPanel({
   onPresetChange: (id: string) => void;
   flowRecommendations: string[];
   onCreateNode: (baseId: string, position: { x: number; y: number }) => void;
-  onConnectEdge: (conn: { source?: string; target?: string }) => void;
+  onConnectEdge: (conn: { source?: string | null; target?: string | null }) => void;
 }) {
   const [rf, setRf] = useState<ReactFlowInstance | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -702,7 +707,7 @@ function CanvasPanel({
             Nodes {nodes.length} · Edges {edges.length}
           </span>
           <Button variant="outline" size="sm" onClick={() => {
-            // Simple auto-layout: arrange nodes horizontally with spacing
+            // Simple auto-layout on the canvas without mutating parent layout state
             const spacingX = 260;
             const spacingY = 160;
             const updatedPositions: Record<string, { x: number; y: number }> = {};
@@ -711,9 +716,22 @@ function CanvasPanel({
               updatedPositions[id] = { x: i * spacingX, y: 0 };
               i += 1;
             }
-            setPositions(updatedPositions);
-            // Shift extra nodes into rows
-            setExtraNodes((prev) => prev.map((n, idx) => ({ ...n, position: { x: (idx % 4) * spacingX, y: spacingY + Math.floor(idx / 4) * spacingY } })));
+            if (rf) {
+              const all = rf.getNodes();
+              let extraIdx = 0;
+              const next = all.map((n) => {
+                if (!n.id.includes('#')) {
+                  // baseline node
+                  const pos = updatedPositions[n.id] ?? n.position;
+                  return { ...n, position: pos };
+                }
+                // extra node: place in grid rows beneath
+                const pos = { x: (extraIdx % 4) * spacingX, y: spacingY + Math.floor(extraIdx / 4) * spacingY };
+                extraIdx += 1;
+                return { ...n, position: pos };
+              });
+              rf.setNodes(next);
+            }
           }}>Layout</Button>
           <Dialog open={flowDialogOpen} onOpenChange={setFlowDialogOpen}>
             <DialogTrigger asChild>
