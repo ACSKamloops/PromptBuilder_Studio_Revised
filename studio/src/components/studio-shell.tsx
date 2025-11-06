@@ -385,6 +385,7 @@ useEffect(() => {
     const w = window as unknown as {
       __testCreateNode?: (id: string, x?: number, y?: number) => void;
       __testReplaceFlow?: (snap: { presetId?: string; extras?: Array<{ id?: string; baseId?: string; position?: { x: number; y: number } }>; edges?: Array<{ source: string; target: string }> }) => void;
+      __testDeleteFirstExtra?: () => void;
     };
     w.__testCreateNode = (id: string, x = 240, y = 160) => handleCreateNode(id, { x, y });
     w.__testReplaceFlow = (snap) => {
@@ -409,9 +410,19 @@ useEffect(() => {
       }
       if (added.length) setUserEdges(added);
     };
+    w.__testDeleteFirstExtra = () => {
+      if (!rf) return;
+      const all = rf.getNodes();
+      const extra = all.find((n) => n.id.includes('#'));
+      if (!extra) return;
+      const remainingEdges = rf.getEdges().filter((e) => e.source !== extra.id && e.target !== extra.id);
+      rf.setEdges(remainingEdges);
+      rf.setNodes(all.filter((n) => n.id !== extra.id));
+    };
     return () => {
       if ('__testCreateNode' in w) delete w.__testCreateNode;
       if ('__testReplaceFlow' in w) delete w.__testReplaceFlow;
+      if ('__testDeleteFirstExtra' in w) delete w.__testDeleteFirstExtra;
     };
   }, [handleCreateNode, activePresetId]);
 
@@ -638,6 +649,22 @@ function CanvasPanel({
   }, [rf]);
 
   // Test helper no longer needed here (defined at shell scope)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const w = window as unknown as { __testDeleteFirstExtra?: () => void };
+    w.__testDeleteFirstExtra = () => {
+      if (!rf) return;
+      const all = rf.getNodes();
+      const extra = all.find((n) => n.id.includes('#'));
+      if (!extra) return;
+      const remainingEdges = rf.getEdges().filter((e) => e.source !== extra.id && e.target !== extra.id);
+      rf.setEdges(remainingEdges);
+      rf.setNodes(all.filter((n) => n.id !== extra.id));
+    };
+    return () => {
+      if ('__testDeleteFirstExtra' in w) delete w.__testDeleteFirstExtra;
+    };
+  }, [rf]);
 
   const triggerRunPreview = useCallback(async () => {
     setDialogOpen(true);

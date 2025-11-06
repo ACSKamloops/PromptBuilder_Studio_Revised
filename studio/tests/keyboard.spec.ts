@@ -1,0 +1,20 @@
+import { test, expect } from '@playwright/test';
+
+test.describe('Keyboard actions', () => {
+  test('Ctrl/Cmd+D duplicates a selected extra node', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForFunction(() => typeof (window as any).__testCreateNode === 'function');
+    await page.evaluate(() => (window as any).__testCreateNode('rag-retriever', 260, 160));
+
+    const nodes = page.locator('[data-node-instance="extra"]');
+    await expect(nodes.first()).toBeVisible();
+    const extraWrapper = page.locator('.react-flow__node').filter({ has: nodes.first() }).first();
+    await extraWrapper.click();
+    const beforeDup = await nodes.count();
+    const isMac = await page.evaluate(() => navigator.platform.includes('Mac'));
+    await page.keyboard.press(isMac ? 'Meta+D' : 'Control+D');
+    await page.waitForTimeout(150);
+    const afterDup = await nodes.count();
+    expect(afterDup).toBeGreaterThan(beforeDup);
+  });
+});
