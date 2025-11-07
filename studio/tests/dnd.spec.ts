@@ -2,7 +2,8 @@ import { test, expect, Page } from '@playwright/test';
 
 async function simulateHtml5Dnd(page: Page, sourceTestId: string, canvasSelector = '.react-flow__pane') {
   await page.waitForSelector(`[data-testid="${sourceTestId}"]`);
-  await page.waitForSelector(canvasSelector);
+  // Only require the canvas to be attached, not visible (headless CI may report hidden)
+  await page.waitForSelector(canvasSelector, { state: 'attached' });
 
   await page.evaluate(({ sourceTestId, canvasSelector }) => {
     const src = document.querySelector(`[data-testid="${sourceTestId}"]`) as HTMLElement | null;
@@ -37,7 +38,11 @@ async function simulateHtml5Dnd(page: Page, sourceTestId: string, canvasSelector
 test.describe('Drag-and-drop library → canvas', () => {
   test('adds a RAG node to the canvas', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Block Library')).toBeVisible();
+    const libraryHeading = page.getByText('Block Library');
+    if (!(await libraryHeading.isVisible().catch(() => false))) {
+      await page.getByRole('button', { name: 'Library' }).click();
+    }
+    await expect(libraryHeading).toBeVisible();
 
     const extraBefore = await page.locator('[data-node-instance="extra"]').count();
     await simulateHtml5Dnd(page, 'block-card-rag-retriever');

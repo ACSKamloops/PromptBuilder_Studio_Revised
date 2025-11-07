@@ -61,6 +61,17 @@ export function OnboardingDialog({
           <li>Use Flow (Save/Load) to export/import snapshots.</li>
         </ul>
         <Separator />
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Keyboard shortcuts</p>
+          <ul className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+            <li><span className="text-muted-foreground">Undo</span> — Ctrl/Cmd+Z</li>
+            <li><span className="text-muted-foreground">Redo</span> — Ctrl/Cmd+Shift+Z</li>
+            <li><span className="text-muted-foreground">Duplicate node</span> — Ctrl/Cmd+D</li>
+            <li><span className="text-muted-foreground">Delete selection</span> — Delete/Backspace</li>
+            <li><span className="text-muted-foreground">Insert on edge</span> — Alt/Shift+Click edge</li>
+          </ul>
+        </div>
+        <Separator />
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={handleDontShow}>Don’t show again</Button>
           <Button onClick={handleClose}>Got it</Button>

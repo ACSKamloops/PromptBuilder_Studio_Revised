@@ -120,3 +120,31 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* React Flow selection marquee polish */
+.react-flow__selection {
+  border: 1px solid oklch(0.705 0.015 286.067); /* ring */
+  background: color-mix(in oklab, var(--ring) 10%, transparent);
+}
+.react-flow__selection:after { display: none; }
+
+/* Edge hover affordances */
+.react-flow__edge:hover path {
+  stroke: var(--ring);
+  stroke-width: 2.25px;
+}
+.react-flow__edge .react-flow__edge-textbg {
+  fill: color-mix(in oklab, var(--ring) 10%, white);
+}
+
+/* Handle polish */
+.rf-handle {
+  width: 12px !important;
+  height: 12px !important;
+  background: var(--background) !important;
+  border: 2px solid var(--border) !important;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+}
+.rf-handle:hover {
+  box-shadow: 0 0 0 5px color-mix(in oklab, var(--ring) 20%, transparent);
+}
