@@ -1,40 +1,76 @@
 import type { PromptSpec } from "@/lib/promptspec";
 import { executeLangGraph } from "@/lib/runtime/langgraph-runner";
-import { LlmProvider, ProviderRunResult, RunStreamEvent, TokenUsage } from "./types";
+import { LlmProvider, ProviderRunResult, RunStreamEvent } from "./types";
 import { enqueueApprovals } from "@/server/approval-inbox";
-
-function estimateUsage(spec: PromptSpec): TokenUsage {
-  const promptChars = JSON.stringify(spec.nodes).length + JSON.stringify(spec.edges).length;
-  const completionChars = spec.nodes.length * 480; // rough stub
-  const promptTokens = Math.max(1, Math.round(promptChars / 4));
-  const completionTokens = Math.max(1, Math.round(completionChars / 4));
-  return {
-    promptTokens,
-    completionTokens,
-    totalTokens: promptTokens + completionTokens,
-  };
-}
 
 export class MockProvider implements LlmProvider {
   readonly name = "mock";
 
   async run(spec: PromptSpec): Promise<ProviderRunResult> {
-    const startedAt = new Date();
     const graphResult = await executeLangGraph(spec);
-    const completedAt = new Date();
-    const usage = estimateUsage(spec);
-    const latencyMs = completedAt.getTime() - startedAt.getTime();
+    const usage = {
+      promptTokens: graphResult.metrics.totals.promptTokens,
+      completionTokens: graphResult.metrics.totals.completionTokens,
+      totalTokens: graphResult.metrics.totals.totalTokens,
+    };
+    const latencyMs = graphResult.latencyMs;
     const costUsd = usage.totalTokens * 0.000002; // stub pricing
 
     const runResult: ProviderRunResult = {
       runId: graphResult.runId,
-      startedAt: graphResult.receivedAt,
-      completedAt: completedAt.toISOString(),
+      startedAt: graphResult.startedAt,
+      completedAt: graphResult.completedAt,
       latencyMs,
       costUsd,
       usage,
       manifest: graphResult.manifest,
       message: graphResult.message,
+      metrics: graphResult.metrics,
+      promptMetrics: {
+        promptId: graphResult.manifest.flow.id,
+        promptName: graphResult.manifest.flow.name,
+        runCount: 1,
+        lastRunId: graphResult.runId,
+        lastUpdated: graphResult.completedAt,
+        latency: {
+          count: 1,
+          mean: latencyMs,
+          variance: 0,
+          standardDeviation: 0,
+          min: latencyMs,
+          max: latencyMs,
+          last: latencyMs,
+        },
+        tokens: {
+          prompt: {
+            count: 1,
+            mean: usage.promptTokens,
+            variance: 0,
+            standardDeviation: 0,
+            min: usage.promptTokens,
+            max: usage.promptTokens,
+            last: usage.promptTokens,
+          },
+          completion: {
+            count: 1,
+            mean: usage.completionTokens,
+            variance: 0,
+            standardDeviation: 0,
+            min: usage.completionTokens,
+            max: usage.completionTokens,
+            last: usage.completionTokens,
+          },
+          total: {
+            count: 1,
+            mean: usage.totalTokens,
+            variance: 0,
+            standardDeviation: 0,
+            min: usage.totalTokens,
+            max: usage.totalTokens,
+            last: usage.totalTokens,
+          },
+        },
+      },
     };
     enqueueApprovals(spec, runResult);
     return runResult;
@@ -50,6 +86,7 @@ export class MockProvider implements LlmProvider {
       index += 1;
     }
     const result = await this.run(spec);
+    yield { type: "metrics", data: { runId: result.runId, metrics: result.metrics } };
     yield { type: "run_completed", data: result };
   }
 }

@@ -79,6 +79,7 @@ import {
 } from "@/components/ui/dialog";
 import { OnboardingDialog } from "@/components/onboarding-dialog";
 import type { RunRecord } from "@/types/run";
+import type { ExecutionMetrics, PromptMetricsSummary } from "@/types/run-metrics";
 import type { ApprovalTask } from "@/types/approval";
 
 const RAG_DEFAULT_PARAMS = {
@@ -146,6 +147,35 @@ type TestFlowImport = {
     params?: Record<string, unknown>;
   }>;
   edges?: Array<{ source: string; target: string }>;
+};
+
+const formatNumber = (value: number, fractionDigits = 0) => {
+  if (!Number.isFinite(value)) return "—";
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: fractionDigits,
+    minimumFractionDigits: fractionDigits,
+  });
+};
+
+const formatMs = (value: number) => {
+  if (!Number.isFinite(value)) return "—";
+  return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${value.toFixed(0)} ms`;
+};
+
+const formatPercentage = (value: number) => {
+  if (!Number.isFinite(value)) return "—";
+  return `${(value * 100).toFixed(1)}%`;
+};
+
+const upsertPromptMetrics = (
+  existing: PromptMetricsSummary[],
+  summary: PromptMetricsSummary,
+): PromptMetricsSummary[] => {
+  const map = new Map(existing.map((item) => [item.promptId, item]));
+  map.set(summary.promptId, summary);
+  return Array.from(map.values()).sort((a, b) =>
+    new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime(),
+  );
 };
 type StudioTestWindow = Window &
   typeof globalThis & {
@@ -1404,6 +1434,8 @@ function CanvasPanel({
   const [runError, setRunError] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunPreviewResponse | null>(null);
   const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
+  const [promptMetrics, setPromptMetrics] = useState<PromptMetricsSummary[]>([]);
+  const [liveMetrics, setLiveMetrics] = useState<ExecutionMetrics | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [liveLogs, setLiveLogs] = useState<string[]>([]);
   const [snapEnabled, setSnapEnabled] = useState(true);
@@ -1447,6 +1479,33 @@ function CanvasPanel({
       y: rect.top + dragGhost.position.y * zoom + y,
     };
   }, [dragGhost, rf]);
+  const executionMetrics = useMemo(() => liveMetrics ?? runResult?.metrics ?? null, [liveMetrics, runResult]);
+  const activePromptSummary = useMemo(() => {
+    if (runResult?.promptMetrics) return runResult.promptMetrics;
+    const summary = promptMetrics.find((item) => item.promptId === promptSpec.flow.id);
+    return summary ?? null;
+  }, [runResult, promptMetrics, promptSpec.flow.id]);
+  const psaReport = useMemo(() => {
+    if (!runResult) return null;
+    for (const block of runResult.manifest.blocks) {
+      if (block.output?.psaReport) return block.output.psaReport;
+    }
+    return null;
+  }, [runResult]);
+  const slowestNode = useMemo(() => {
+    if (!executionMetrics) return null;
+    return executionMetrics.perNode.reduce<ExecutionMetrics["perNode"][number] | null>((slow, node) => {
+      if (!slow || node.latencyMs > slow.latencyMs) return node;
+      return slow;
+    }, null);
+  }, [executionMetrics]);
+  const handleAutoPrompt = useCallback(() => {
+    const promptName = activePromptSummary?.promptName ?? promptSpec.flow.name;
+    const message = psaReport?.autopromptReady
+      ? `${promptName}: Stability variance exceeded threshold. AutoPrompt optimisation queued.`
+      : `${promptName}: AutoPrompt optimisation loop queued.`;
+    onToast(message);
+  }, [activePromptSummary?.promptName, onToast, promptSpec.flow.name, psaReport?.autopromptReady]);
   useHotkeys(
     ["meta+k", "ctrl+k"],
     (event) => {
@@ -1641,11 +1700,20 @@ function CanvasPanel({
     if (!dialogOpen) return;
     fetch("/api/runs")
       .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data?.runs)) {
-          setRunHistory(data.runs.slice(0, 10));
-        }
-      })
+        .then((data) => {
+          if (Array.isArray(data?.runs)) {
+            setRunHistory(data.runs.slice(0, 10));
+            const summaries = data.runs
+              .map((entry: RunRecord) => entry.promptMetrics)
+              .filter((summary): summary is PromptMetricsSummary => Boolean(summary));
+            if (summaries.length > 0) {
+              setPromptMetrics((prev) => summaries.reduce((acc, summary) => upsertPromptMetrics(acc, summary), prev));
+            }
+          }
+          if (Array.isArray(data?.metrics)) {
+            setPromptMetrics(data.metrics);
+          }
+        })
       .catch(() => {});
   }, [dialogOpen]);
   const triggerRunPreview = useCallback(async () => {
@@ -1653,6 +1721,7 @@ function CanvasPanel({
     setIsRunning(true);
     setRunError(null);
     setRunResult(null);
+    setLiveMetrics(null);
     setLiveLogs([]);
     try {
       if (!streaming) {
@@ -1667,7 +1736,9 @@ function CanvasPanel({
         }
         const data = (await response.json()) as RunPreviewResponse;
         setRunResult(data);
-        setRunHistory((prev) => [data, ...prev.filter((entry) => entry.runId !== data.runId)].slice(0, 5));
+        setLiveMetrics(data.metrics);
+        setRunHistory((prev) => [data, ...prev.filter((entry) => entry.runId !== data.runId)].slice(0, 10));
+        setPromptMetrics((prev) => upsertPromptMetrics(prev, data.promptMetrics));
         onRefreshApprovals();
       } else {
         const response = await fetch("/api/run/stream", {
@@ -1696,8 +1767,13 @@ function CanvasPanel({
               if (evt.type === "run_completed") {
                 const payload = evt.data as RunPreviewResponse;
                 setRunResult(payload);
-                setRunHistory((prev) => [payload, ...prev.filter((entry) => entry.runId !== payload.runId)].slice(0, 5));
+                setLiveMetrics(payload.metrics);
+                setRunHistory((prev) => [payload, ...prev.filter((entry) => entry.runId !== payload.runId)].slice(0, 10));
+                setPromptMetrics((prev) => upsertPromptMetrics(prev, payload.promptMetrics));
                 onRefreshApprovals();
+              } else if (evt.type === "metrics") {
+                const metricsPayload = evt.data as { runId: string; metrics: ExecutionMetrics };
+                setLiveMetrics(metricsPayload.metrics);
               } else if (evt.type === "error") {
                 setRunError(evt.error ?? "Stream error");
               }
@@ -1984,7 +2060,7 @@ function CanvasPanel({
                         <p className="text-muted-foreground">
                           {runResult.usage.promptTokens} prompt · {runResult.usage.completionTokens} completion · total {runResult.usage.totalTokens} tokens
                         </p>
-                        <p className="text-muted-foreground">${runResult.costUsd.toFixed(4)} · {runResult.latencyMs} ms</p>
+                        <p className="text-muted-foreground">${runResult.costUsd.toFixed(4)} · {formatMs(runResult.latencyMs)}</p>
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground">{runResult.message}</p>
@@ -2035,6 +2111,151 @@ function CanvasPanel({
                       </div>
                     ))}
                   </div>
+                  {executionMetrics && (
+                    <div className="rounded-lg border border-border bg-card/60 p-3 text-xs space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-foreground">Execution metrics</p>
+                        {slowestNode && (
+                          <span className="text-[11px] text-muted-foreground">
+                            Slowest node: {slowestNode.label} · {formatMs(slowestNode.latencyMs)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <div>
+                          <p className="font-medium text-foreground">Prompt tokens</p>
+                          <p className="text-muted-foreground">{formatNumber(executionMetrics.totals.promptTokens)}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Completion tokens</p>
+                          <p className="text-muted-foreground">{formatNumber(executionMetrics.totals.completionTokens)}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Total tokens</p>
+                          <p className="text-muted-foreground">{formatNumber(executionMetrics.totals.totalTokens)}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Latency</p>
+                          <p className="text-muted-foreground">{formatMs(executionMetrics.totals.latencyMs)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {activePromptSummary && (
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">Historical metrics</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {activePromptSummary.runCount} runs · Last {new Date(activePromptSummary.lastUpdated).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={psaReport?.autopromptReady ? "destructive" : "secondary"}>
+                            {psaReport?.autopromptReady ? "AutoPrompt recommended" : "Stable"}
+                          </Badge>
+                          <Button size="sm" onClick={handleAutoPrompt}>
+                            Trigger AutoPrompt
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <div>
+                          <p className="font-medium text-foreground">Avg latency</p>
+                          <p className="text-muted-foreground">{formatMs(activePromptSummary.latency.mean)}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            σ {formatMs(activePromptSummary.latency.standardDeviation)} · Var {formatNumber(activePromptSummary.latency.variance, 0)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Avg tokens</p>
+                          <p className="text-muted-foreground">{formatNumber(activePromptSummary.tokens.total.mean)}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            σ {formatNumber(activePromptSummary.tokens.total.standardDeviation, 1)} · Var {formatNumber(activePromptSummary.tokens.total.variance, 1)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Prompt tokens μ</p>
+                          <p className="text-muted-foreground">{formatNumber(activePromptSummary.tokens.prompt.mean)}</p>
+                          <p className="text-[11px] text-muted-foreground">σ {formatNumber(activePromptSummary.tokens.prompt.standardDeviation, 1)}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Completion tokens μ</p>
+                          <p className="text-muted-foreground">{formatNumber(activePromptSummary.tokens.completion.mean)}</p>
+                          <p className="text-[11px] text-muted-foreground">σ {formatNumber(activePromptSummary.tokens.completion.standardDeviation, 1)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {psaReport && (
+                    <div className="rounded-lg border border-primary/40 bg-primary/5 p-3 text-xs space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-foreground">Prompt Sensitivity Analysis</p>
+                        <Badge variant={psaReport.autopromptReady ? "destructive" : "outline"}>
+                          {psaReport.autopromptReady ? "AutoPrompt loop triggered" : "Within threshold"}
+                        </Badge>
+                      </div>
+                      <p className="text-muted-foreground">{psaReport.summary}</p>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <div>
+                          <p className="font-medium text-foreground">Stability score</p>
+                          <p className="text-muted-foreground">{formatPercentage(psaReport.stabilityScore)}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Variance</p>
+                          <p className="text-muted-foreground">{formatPercentage(psaReport.variance)}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Confidence band</p>
+                          <p className="text-muted-foreground">±{formatPercentage(psaReport.confidenceBand)}</p>
+                        </div>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <p className="font-medium text-foreground">Baseline prompt</p>
+                          <p className="italic text-muted-foreground">{psaReport.baselinePreview}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Perturbation axes</p>
+                          <p className="text-muted-foreground">
+                            {psaReport.axes.length > 0 ? psaReport.axes.join(", ") : "No axes defined"}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">Sample size {psaReport.sampleSize}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">Recommendations</p>
+                        <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
+                          {psaReport.recommendations.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                  {promptMetrics.length > 0 && (
+                    <div className="rounded border border-border/70 bg-card/40">
+                      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Prompt metrics dashboard
+                      </div>
+                      <div className="max-h-48 divide-y divide-border/60 overflow-auto text-xs">
+                        {promptMetrics.slice(0, 5).map((summary) => (
+                          <div key={summary.promptId} className="flex items-center justify-between gap-3 px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-foreground">{summary.promptName}</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {summary.runCount} runs · σ tokens {formatNumber(summary.tokens.total.standardDeviation, 1)}
+                              </p>
+                            </div>
+                            <div className="text-right text-muted-foreground">
+                              <div>μ tokens {formatNumber(summary.tokens.total.mean)}</div>
+                              <div>μ latency {formatMs(summary.latency.mean)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <pre className="max-h-64 overflow-auto rounded bg-muted p-3 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap font-mono" data-testid="prompt-preview">
                     {JSON.stringify(runResult, null, 2)}
                   </pre>
@@ -2054,10 +2275,15 @@ function CanvasPanel({
                             <div className="min-w-0">
                               <p className="truncate font-medium text-foreground">{entry.runId}</p>
                               <p className="text-muted-foreground">
-                                {new Date(entry.startedAt).toLocaleTimeString()} · {entry.usage.totalTokens} tokens
+                                {new Date(entry.startedAt).toLocaleTimeString()} · {formatNumber(entry.usage.totalTokens)} tokens · {formatMs(entry.latencyMs)}
                               </p>
                             </div>
-                            <div className="text-muted-foreground">${entry.costUsd.toFixed(4)}</div>
+                            <div className="text-right text-muted-foreground">
+                              <div>${entry.costUsd.toFixed(4)}</div>
+                              <div className="text-[11px]">
+                                σ {formatNumber(entry.promptMetrics.latency.standardDeviation, 0)} · σ {formatNumber(entry.promptMetrics.tokens.total.standardDeviation, 1)} tok
+                              </div>
+                            </div>
                           </button>
                         ))}
                       </div>

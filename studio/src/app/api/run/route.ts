@@ -27,6 +27,6 @@ export async function POST(request: Request) {
 
   const provider = getProvider(body.provider);
   const result = await provider.run(promptSpec);
-  recordRun(result);
-  return NextResponse.json(result);
+  const recorded = recordRun(result);
+  return NextResponse.json(recorded);
 }

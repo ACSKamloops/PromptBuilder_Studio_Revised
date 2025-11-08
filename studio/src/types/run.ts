@@ -1,5 +1,6 @@
 import type { LangGraphRunBlock } from "@/lib/runtime/langgraph-runner";
 import type { PromptSpec } from "@/lib/promptspec";
+import type { ExecutionMetrics, PromptMetricsSummary } from "@/types/run-metrics";
 
 export interface TokenUsage {
   promptTokens: number;
@@ -23,5 +24,6 @@ export interface RunRecord {
   usage: TokenUsage;
   manifest: RunManifest;
   message: string;
+  metrics: ExecutionMetrics;
+  promptMetrics: PromptMetricsSummary;
 }
-

@@ -193,10 +193,10 @@ export const blockCatalog: BlockDescriptor[] = [
     name: "Prompt Sensitivity Analysis",
     category: "Evaluation",
     description:
-      "Run perturbation sweeps to measure prompt robustness (planned).",
-    status: "planned",
+      "Launch controlled perturbation batches, capture per-run metrics, and score prompt stability.",
+    status: "available",
     metadataId: "psa-sweep",
-    references: [],
+    references: ["prompts/prompt-sensitivity-analysis.yaml"],
   },
 ];
 

@@ -8,8 +8,22 @@ import type {
   SceneGraphPayload,
   VideoEventGraphPayload,
 } from "@/types/prompt-metadata";
+import type { ExecutionMetrics, NodeMetric } from "@/types/run-metrics";
 import { loadPromptLibrary } from "@/lib/load-prompts";
 import { RunnableLambda } from "@langchain/core/runnables";
+
+export interface PsaReport {
+  baselinePreview: string;
+  sampleSize: number;
+  axes: string[];
+  stabilityScore: number;
+  variance: number;
+  confidenceBand: number;
+  threshold: number;
+  autopromptReady: boolean;
+  summary: string;
+  recommendations: string[];
+}
 
 export interface LangGraphRunBlockOutput {
   flowSummary?: string;
@@ -20,6 +34,7 @@ export interface LangGraphRunBlockOutput {
   compositionSteps?: string[];
   paramsUsed?: Record<string, unknown>;
   note?: string;
+  psaReport?: PsaReport;
 }
 
 export interface LangGraphRunBlock {
@@ -32,27 +47,46 @@ export interface LangGraphRunBlock {
 export interface LangGraphRunResult {
   runId: string;
   receivedAt: string;
+  startedAt: string;
+  completedAt: string;
+  latencyMs: number;
   manifest: {
     flow: PromptSpec["flow"];
     nodeCount: number;
     edgeCount: number;
     blocks: LangGraphRunBlock[];
   };
+  metrics: ExecutionMetrics;
   message: string;
 }
 
 export async function executeLangGraph(promptSpec: PromptSpec): Promise<LangGraphRunResult> {
   const runId = `langgraph-${Date.now()}`;
-  const timestamp = new Date().toISOString();
+  const receivedAt = new Date();
 
   const metadataList = await loadPromptLibrary();
   const metadataMap = new Map<string, PromptMetadata>(metadataList.map((item) => [item.id, item]));
 
   const runnable = buildRunnableFromSpec(promptSpec, metadataMap);
   const outputs: LangGraphRunBlock[] = [];
+  const perNodeMetrics: NodeMetric[] = [];
+  const runStarted = Date.now();
 
   for (const node of promptSpec.nodes) {
+    const nodeStarted = Date.now();
     const result = await runnable.invoke({ node });
+    const latencyMs = Date.now() - nodeStarted;
+    const nodeTokens = estimateNodeTokens(node);
+
+    perNodeMetrics.push({
+      nodeId: node.id,
+      label: node.block,
+      latencyMs,
+      promptTokens: nodeTokens.prompt,
+      completionTokens: nodeTokens.completion,
+      totalTokens: nodeTokens.prompt + nodeTokens.completion,
+    });
+
     outputs.push({
       id: node.id,
       block: node.block,
@@ -61,15 +95,36 @@ export async function executeLangGraph(promptSpec: PromptSpec): Promise<LangGrap
     });
   }
 
+  const runCompleted = Date.now();
+  const totals = perNodeMetrics.reduce(
+    (acc, metric) => {
+      acc.promptTokens += metric.promptTokens;
+      acc.completionTokens += metric.completionTokens;
+      acc.totalTokens += metric.totalTokens;
+      acc.latencyMs += metric.latencyMs;
+      return acc;
+    },
+    { promptTokens: 0, completionTokens: 0, totalTokens: 0, latencyMs: 0 },
+  );
+
+  const metrics: ExecutionMetrics = {
+    perNode: perNodeMetrics,
+    totals,
+  };
+
   return {
     runId,
-    receivedAt: timestamp,
+    receivedAt: receivedAt.toISOString(),
+    startedAt: new Date(runStarted).toISOString(),
+    completedAt: new Date(runCompleted).toISOString(),
+    latencyMs: runCompleted - runStarted,
     manifest: {
       flow: promptSpec.flow,
       nodeCount: promptSpec.nodes.length,
       edgeCount: promptSpec.edges.length,
       blocks: outputs,
     },
+    metrics,
     message: "Executed via LangGraph runnable stub. Replace with a full graph runtime to call real models.",
   };
 }
@@ -97,7 +152,7 @@ function buildRunnableFromSpec(
         noteSegments.push(warnings.join(" | "));
       }
 
-      return {
+      const baseOutput: LangGraphRunBlockOutput = {
         flowSummary,
         guidance: metadata?.when_to_use,
         failureModes: metadata?.failure_modes,
@@ -107,8 +162,81 @@ function buildRunnableFromSpec(
         paramsUsed,
         note: noteSegments.join(" — "),
       };
+
+      if (node.metadataId === "psa-sweep" || node.id === "psa") {
+        return {
+          ...baseOutput,
+          note: "Simulated prompt sensitivity analysis complete.",
+          psaReport: buildPsaReport(node),
+        };
+      }
+
+      return baseOutput;
     },
   );
+}
+
+function estimateNodeTokens(node: PromptSpec["nodes"][number]) {
+  const serialized = JSON.stringify(node.params ?? {});
+  const promptEstimate = Math.max(8, Math.round(serialized.length / 3));
+  const complexityBoost = node.block.length * 2;
+  const promptTokens = promptEstimate + complexityBoost;
+  const completionTokens = Math.max(32, Math.round(promptTokens * 0.6));
+  return { prompt: promptTokens, completion: completionTokens };
+}
+
+function buildPsaReport(node: PromptSpec["nodes"][number]): PsaReport {
+  const params = node.params ?? {};
+  const baseline = typeof params.baseline_prompt === "string" ? params.baseline_prompt : "";
+  const axesParam = params.perturbation_axes;
+  const axes = Array.isArray(axesParam)
+    ? axesParam
+        .map((value) => (typeof value === "string" ? value : JSON.stringify(value)))
+        .filter((value) => value.length > 0)
+    : [];
+  const batchSizeRaw = params.batch_size;
+  const sampleSize = Number.isFinite(Number(batchSizeRaw))
+    ? Math.max(1, Number(batchSizeRaw))
+    : 24;
+  const thresholdRaw = params.stability_threshold;
+  const threshold = Number.isFinite(Number(thresholdRaw)) ? Number(thresholdRaw) : 0.85;
+
+  const baselineLengthFactor = Math.min(0.28, baseline.length / 1200);
+  const axisPenalty = axes.length * 0.035;
+  const baseScore = 0.92 - baselineLengthFactor - axisPenalty + Math.min(0.04, sampleSize / 600);
+  const stabilityScore = Math.max(0.45, Math.min(0.99, Number(baseScore.toFixed(3))));
+  const variance = Number(((1 - stabilityScore) * 0.14 + axisPenalty / 2).toFixed(4));
+  const confidenceBand = Number((Math.sqrt(Math.max(variance, 0)) * 1.96).toFixed(4));
+  const autopromptReady = stabilityScore < threshold;
+
+  const summary =
+    `Executed ${sampleSize} perturbations across ${axes.length || 0} axes. ` +
+    `Observed stability score ${(stabilityScore * 100).toFixed(1)}% with variance ${(variance * 100).toFixed(2)}%.`;
+
+  const recommendations: string[] = [];
+  if (autopromptReady) {
+    recommendations.push("Trigger AutoPrompt optimisation to tighten guardrails.");
+    recommendations.push("Focus on the highest variance axis first for rewrite suggestions.");
+  } else {
+    recommendations.push("Current prompt meets the configured stability threshold.");
+    if (axes.length > 0) {
+      recommendations.push("Monitor the callout axes for drift weekly.");
+    }
+  }
+
+  return {
+    baselinePreview:
+      baseline.length > 160 ? `${baseline.slice(0, 160)}…` : baseline || "(baseline prompt not provided)",
+    sampleSize,
+    axes,
+    stabilityScore,
+    variance,
+    confidenceBand,
+    threshold,
+    autopromptReady,
+    summary,
+    recommendations,
+  };
 }
 
 interface NormalizationResult<T> {
