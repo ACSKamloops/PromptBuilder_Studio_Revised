@@ -19,32 +19,32 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: prompt-builder/studio/package-lock.json
+          cache-dependency-path: studio/package-lock.json
 
       - name: Install deps (studio)
-        working-directory: prompt-builder/studio
+        working-directory: studio
         run: npm ci
 
       - name: Typecheck
-        working-directory: prompt-builder/studio
+        working-directory: studio
         run: npm run typecheck
 
       - name: Validate prompts
-        working-directory: prompt-builder/studio
+        working-directory: studio
         run: npm run validate:prompts
 
       - name: Unit tests
-        working-directory: prompt-builder/studio
+        working-directory: studio
         run: npm run test:unit
 
       - name: Build
-        working-directory: prompt-builder/studio
+        working-directory: studio
         run: npm run build
 
       - name: Install Playwright Browsers
-        working-directory: prompt-builder/studio
+        working-directory: studio
         run: npx playwright install --with-deps
 
       - name: E2E tests
-        working-directory: prompt-builder/studio
+        working-directory: studio
         run: npm run test:e2e -- --reporter=line
