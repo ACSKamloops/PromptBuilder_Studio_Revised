@@ -1,4 +1,5 @@
 import type { LangGraphRunBlock } from "@/lib/runtime/langgraph-runner";
+import type { HybridDecisionTelemetry } from "@/lib/runtime/hybrid-controller";
 import type { PromptSpec } from "@/lib/promptspec";
 
 export interface TokenUsage {
@@ -12,6 +13,7 @@ export interface RunManifest {
   nodeCount: number;
   edgeCount: number;
   blocks: LangGraphRunBlock[];
+  complexityScore: number;
 }
 
 export interface RunRecord {
@@ -22,6 +24,7 @@ export interface RunRecord {
   costUsd: number;
   usage: TokenUsage;
   manifest: RunManifest;
+  gatingDecisions: HybridDecisionTelemetry[];
   message: string;
 }
 

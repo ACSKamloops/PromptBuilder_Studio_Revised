@@ -73,6 +73,15 @@ export const blockCatalog: BlockDescriptor[] = [
     references: [],
   },
   {
+    id: "reason.hybrid",
+    name: "Hybrid Reasoning Switch",
+    category: "Strategy",
+    description:
+      "Route tasks between fast and deliberate branches using complexity, token, and latency gates.",
+    status: "available",
+    references: [],
+  },
+  {
     id: "cov",
     name: "Chain of Verification",
     category: "Verification",

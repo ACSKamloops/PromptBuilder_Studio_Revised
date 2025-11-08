@@ -1,19 +1,8 @@
 import type { PromptSpec } from "@/lib/promptspec";
 import { executeLangGraph } from "@/lib/runtime/langgraph-runner";
-import { LlmProvider, ProviderRunResult, RunStreamEvent, TokenUsage } from "./types";
+import { estimateCostUsd, estimateTokenUsage } from "@/lib/runtime/usage";
+import { LlmProvider, ProviderRunResult, RunStreamEvent } from "./types";
 import { enqueueApprovals } from "@/server/approval-inbox";
-
-function estimateUsage(spec: PromptSpec): TokenUsage {
-  const promptChars = JSON.stringify(spec.nodes).length + JSON.stringify(spec.edges).length;
-  const completionChars = spec.nodes.length * 480; // rough stub
-  const promptTokens = Math.max(1, Math.round(promptChars / 4));
-  const completionTokens = Math.max(1, Math.round(completionChars / 4));
-  return {
-    promptTokens,
-    completionTokens,
-    totalTokens: promptTokens + completionTokens,
-  };
-}
 
 export class MockProvider implements LlmProvider {
   readonly name = "mock";
@@ -22,9 +11,18 @@ export class MockProvider implements LlmProvider {
     const startedAt = new Date();
     const graphResult = await executeLangGraph(spec);
     const completedAt = new Date();
-    const usage = estimateUsage(spec);
+    const usage = estimateTokenUsage(spec);
     const latencyMs = completedAt.getTime() - startedAt.getTime();
-    const costUsd = usage.totalTokens * 0.000002; // stub pricing
+    const costUsd = estimateCostUsd(usage);
+    const gatingDecisions = graphResult.gatingDecisions.map((decision) => ({
+      ...decision,
+      metrics: {
+        ...decision.metrics,
+        observedTokens: usage.totalTokens,
+        observedLatencyMs: latencyMs,
+        observedCostUsd: costUsd,
+      },
+    }));
 
     const runResult: ProviderRunResult = {
       runId: graphResult.runId,
@@ -34,6 +32,7 @@ export class MockProvider implements LlmProvider {
       costUsd,
       usage,
       manifest: graphResult.manifest,
+      gatingDecisions,
       message: graphResult.message,
     };
     enqueueApprovals(spec, runResult);

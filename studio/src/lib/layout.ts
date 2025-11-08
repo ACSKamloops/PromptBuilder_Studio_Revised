@@ -26,10 +26,17 @@ export async function computeElkLayout(
         width: 220,
         height: 120,
       })),
-      edges: flow.nodeIds.slice(0, -1).map((source, index) => ({
-        id: `${source}->${flow.nodeIds[index + 1]}`,
-        sources: [source],
-        targets: [flow.nodeIds[index + 1]],
+      edges: (
+        (flow.edges && flow.edges.length > 0
+          ? flow.edges
+          : flow.nodeIds.slice(0, -1).map((source, index) => ({
+              source,
+              target: flow.nodeIds[index + 1],
+            })))
+      ).map((edge, index) => ({
+        id: `${edge.source}->${edge.target}#${index + 1}`,
+        sources: [edge.source],
+        targets: [edge.target],
       })),
     };
 

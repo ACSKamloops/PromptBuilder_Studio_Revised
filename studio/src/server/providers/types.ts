@@ -1,5 +1,6 @@
 import type { PromptSpec } from "@/lib/promptspec";
 import type { LangGraphRunResult } from "@/lib/runtime/langgraph-runner";
+import type { HybridDecisionTelemetry } from "@/lib/runtime/hybrid-controller";
 
 export interface TokenUsage {
   promptTokens: number;
@@ -15,6 +16,7 @@ export interface ProviderRunResult {
   costUsd: number;
   usage: TokenUsage;
   manifest: LangGraphRunResult["manifest"];
+  gatingDecisions: HybridDecisionTelemetry[];
   message: string;
 }
 

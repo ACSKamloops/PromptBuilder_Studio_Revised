@@ -145,7 +145,7 @@ type TestFlowImport = {
     label?: string;
     params?: Record<string, unknown>;
   }>;
-  edges?: Array<{ source: string; target: string }>;
+  edges?: Array<{ source: string; target: string; label?: string }>;
 };
 type StudioTestWindow = Window &
   typeof globalThis & {
@@ -247,24 +247,42 @@ function buildNodes(
 }
 
 function buildEdges(flow: FlowPreset): Edge[] {
-  const edges: Edge[] = [];
-  for (let i = 0; i < flow.nodeIds.length - 1; i += 1) {
-    const source = flow.nodeIds[i];
-    const target = flow.nodeIds[i + 1];
-    edges.push({
-      id: `${source}→${target}`,
+  const baseEdges: Edge[] = [];
+  const definedEdges = flow.edges && flow.edges.length > 0 ? flow.edges : undefined;
+  const sourceEdges = definedEdges ?? flow.nodeIds.slice(0, -1).map((source, index) => ({
+      source,
+      target: flow.nodeIds[index + 1],
+      kind: "default" as const,
+      label: inferEdgeLabel(source),
+    }));
+
+  sourceEdges.forEach((edge, index) => {
+    const source = edge.source;
+    const target = edge.target;
+    const label = edge.label ?? inferEdgeLabel(source);
+    const kind = edge.kind ?? (edge.branch ? "branch" : "default");
+    baseEdges.push({
+      id: `${source}→${target}#${index + 1}`,
       source,
       target,
-      label: inferEdgeLabel(source),
-      labelBgPadding: [4,2],
-      labelStyle: { fontSize: 10, fill: '#334155' },
-      style: { strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: '#334155' },
-      type: 'smart',
-      data: { editable: false },
+      label,
+      labelBgPadding: [4, 2],
+      labelStyle: { fontSize: 10, fill: "#334155" },
+      style: {
+        strokeWidth: 1.5,
+        strokeDasharray: kind === "branch" || kind === "router" ? "6 4" : undefined,
+      },
+      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#334155" },
+      type: "smart",
+      data: {
+        editable: false,
+        branch: edge.branch,
+        gate: edge.gate,
+      },
     });
-  }
-  return edges;
+  });
+
+  return baseEdges;
 }
 
 function inferEdgeLabel(sourceId: string): string {
@@ -405,12 +423,16 @@ const promptSpec = useMemo(() => {
     const base = buildPromptSpec(activePreset, nodeParams, metadataById);
     // Extend with extra nodes and user edges
     const extra = extraNodes.map((n) => {
-      const metadata = n.data.metadataId ? metadataById.get(n.data.metadataId) : metadataById.get(n.id);
+      const baseId = n.id.includes("#") ? n.id.split("#")[0] : n.id;
+      const metadata = n.data.metadataId ? metadataById.get(n.data.metadataId) : metadataById.get(baseId);
+      const descriptor = resolveBlockDescriptor(baseId, metadataById);
       return {
         id: n.id,
+        type: baseId,
         block: n.data.label,
         metadataId: n.data.metadataId,
         title: metadata?.title,
+        category: descriptor?.category ?? metadata?.category,
         params: nodeParams[n.id] ?? {},
         sourcePath: metadata?.relativePath,
       };
@@ -418,7 +440,16 @@ const promptSpec = useMemo(() => {
     return {
       ...base,
       nodes: [...base.nodes, ...extra],
-      edges: [...base.edges, ...userEdges.map((e) => ({ from: e.source, to: e.target }))],
+      edges: [
+        ...base.edges,
+        ...userEdges.map((e, index) => ({
+          id: e.id ?? `user-${index + 1}`,
+          from: String(e.source),
+          to: String(e.target),
+          label: typeof e.label === "string" ? e.label : undefined,
+          kind: "default" as const,
+        })),
+      ],
     };
   }, [activePreset, nodeParams, metadataById, extraNodes, userEdges]);
 
@@ -519,7 +550,11 @@ const promptSpec = useMemo(() => {
       label: n.data?.label,
       params: nodeParams[n.id] ?? {},
     }));
-    const uEdges = userEdges.map((e) => ({ source: e.source, target: e.target }));
+    const uEdges = userEdges.map((e) => ({
+      source: e.source,
+      target: e.target,
+      label: typeof e.label === "string" ? e.label : undefined,
+    }));
     return {
       presetId: activePreset.id,
       extras,
@@ -669,7 +704,7 @@ const promptSpec = useMemo(() => {
         const snap = JSON.parse(stored) as {
           presetId: string;
           extras: Array<{ id: string; baseId?: string; position?: { x: number; y: number }; label?: string; params?: Record<string, unknown> }>;
-          edges: Array<{ source: string; target: string }>;
+          edges: Array<{ source: string; target: string; label?: string }>;
         };
 
         if (snap?.extras?.length) {
@@ -734,7 +769,12 @@ const promptSpec = useMemo(() => {
           setUserEdges(
             snap.edges
               .filter((e) => !!e.source && !!e.target)
-              .map((e, i) => ({ id: `${e.source}-${e.target}-${i + 1}`, source: e.source, target: e.target })),
+              .map((e, i) => ({
+                id: `${e.source}-${e.target}-${i + 1}`,
+                source: e.source,
+                target: e.target,
+                label: e.label,
+              })),
           );
         }
       }
@@ -864,7 +904,12 @@ const promptSpec = useMemo(() => {
       const added: Edge[] = [];
       for (const edge of snap.edges ?? []) {
         if (edge.source && edge.target) {
-          added.push({ id: `${edge.source}-${edge.target}-${added.length + 1}`, source: edge.source, target: edge.target });
+          added.push({
+            id: `${edge.source}-${edge.target}-${added.length + 1}`,
+            source: edge.source,
+            target: edge.target,
+            label: edge.label,
+          });
         }
       }
       if (added.length) setUserEdges(added);
@@ -1867,7 +1912,7 @@ function CanvasPanel({
                     data-testid="flow-export-json"
                     readOnly
                     className="w-full h-40 rounded border bg-muted/40 p-2 text-xs font-mono"
-                    value={JSON.stringify({ presetId: activePresetId, extras: nodes.filter(n => n.id.includes('#')).map(n => ({ id: n.id, baseId: n.id.split('#')[0], position: n.position })), edges: edges.map(e => ({ source: e.source, target: e.target })) }, null, 2)}
+                    value={JSON.stringify({ presetId: activePresetId, extras: nodes.filter(n => n.id.includes('#')).map(n => ({ id: n.id, baseId: n.id.split('#')[0], position: n.position })), edges: edges.map(e => ({ source: e.source, target: e.target, label: typeof e.label === 'string' ? e.label : undefined })) }, null, 2)}
                   />
                 </div>
                 <div>
@@ -1976,7 +2021,7 @@ function CanvasPanel({
                       <div>
                         <p className="font-medium">Summary</p>
                         <p className="text-muted-foreground">
-                          Blocks {runResult.manifest.blocks.length} · Nodes {runResult.manifest.nodeCount} · Edges {runResult.manifest.edgeCount}
+                          Blocks {runResult.manifest.blocks.length} · Nodes {runResult.manifest.nodeCount} · Edges {runResult.manifest.edgeCount} · Complexity {runResult.manifest.complexityScore}
                         </p>
                       </div>
                       <div>
@@ -1999,6 +2044,17 @@ function CanvasPanel({
                         <p className="text-muted-foreground">
                           Output: {block.output.note ?? "No output"}
                         </p>
+                        {block.output.gating && (
+                          <div className="space-y-1 text-muted-foreground">
+                            <p>
+                              Hybrid route → <span className="font-semibold text-foreground">{block.output.gating.selectedBranch}</span>
+                            </p>
+                            <p>Rationale: {block.output.gating.rationale || "auto"}</p>
+                            <p>
+                              Heuristics: complexity {block.output.gating.metrics.complexityScore} (≤ {block.output.gating.thresholds.fastComplexity ?? "-"}), tokens {block.output.gating.metrics.tokenEstimate}, latency {block.output.gating.metrics.latencyEstimate} ms
+                            </p>
+                          </div>
+                        )}
                         {block.output.guidance && (
                           <p className="text-muted-foreground">
                             Guidance: {block.output.guidance}
@@ -2035,6 +2091,28 @@ function CanvasPanel({
                       </div>
                     ))}
                   </div>
+                  {runResult.gatingDecisions.length > 0 && (
+                    <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hybrid routing telemetry</p>
+                      {runResult.gatingDecisions.map((decision) => (
+                        <div key={`${decision.nodeId}-${decision.timestamp}`} className="space-y-1">
+                          <p className="font-medium text-foreground">{decision.nodeLabel} → {decision.selectedBranch}</p>
+                          <p className="text-muted-foreground">{decision.rationale || "No rationale provided."}</p>
+                          <p className="text-muted-foreground">
+                            Complexity {decision.metrics.complexityScore} (budget ≤ {decision.thresholds.fastComplexity ?? "-"}) · Tokens {decision.metrics.tokenEstimate} · Latency est. {decision.metrics.latencyEstimate} ms
+                          </p>
+                          {typeof decision.metrics.observedTokens === "number" && (
+                            <p className="text-muted-foreground">
+                              Observed: {decision.metrics.observedTokens} tokens · {decision.metrics.observedLatencyMs ?? "-"} ms · $
+                              {typeof decision.metrics.observedCostUsd === "number"
+                                ? decision.metrics.observedCostUsd.toFixed(4)
+                                : decision.metrics.estimatedCostUsd.toFixed(4)}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <pre className="max-h-64 overflow-auto rounded bg-muted p-3 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap font-mono" data-testid="prompt-preview">
                     {JSON.stringify(runResult, null, 2)}
                   </pre>
@@ -2055,6 +2133,7 @@ function CanvasPanel({
                               <p className="truncate font-medium text-foreground">{entry.runId}</p>
                               <p className="text-muted-foreground">
                                 {new Date(entry.startedAt).toLocaleTimeString()} · {entry.usage.totalTokens} tokens
+                                {entry.gatingDecisions.length > 0 && ` · Hybrid ${entry.gatingDecisions[0].selectedBranch}`}
                               </p>
                             </div>
                             <div className="text-muted-foreground">${entry.costUsd.toFixed(4)}</div>

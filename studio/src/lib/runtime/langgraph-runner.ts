@@ -8,6 +8,11 @@ import type {
   SceneGraphPayload,
   VideoEventGraphPayload,
 } from "@/types/prompt-metadata";
+import {
+  evaluateHybridDecision,
+  type HybridDecisionTelemetry,
+  computeFlowComplexity,
+} from "@/lib/runtime/hybrid-controller";
 import { loadPromptLibrary } from "@/lib/load-prompts";
 import { RunnableLambda } from "@langchain/core/runnables";
 
@@ -20,6 +25,12 @@ export interface LangGraphRunBlockOutput {
   compositionSteps?: string[];
   paramsUsed?: Record<string, unknown>;
   note?: string;
+  gating?: {
+    selectedBranch: string;
+    rationale: string;
+    thresholds: HybridDecisionTelemetry["thresholds"];
+    metrics: HybridDecisionTelemetry["metrics"];
+  };
 }
 
 export interface LangGraphRunBlock {
@@ -37,7 +48,9 @@ export interface LangGraphRunResult {
     nodeCount: number;
     edgeCount: number;
     blocks: LangGraphRunBlock[];
+    complexityScore: number;
   };
+  gatingDecisions: HybridDecisionTelemetry[];
   message: string;
 }
 
@@ -50,14 +63,34 @@ export async function executeLangGraph(promptSpec: PromptSpec): Promise<LangGrap
 
   const runnable = buildRunnableFromSpec(promptSpec, metadataMap);
   const outputs: LangGraphRunBlock[] = [];
+  const gatingDecisions: HybridDecisionTelemetry[] = [];
+  const complexityScore = computeFlowComplexity(promptSpec);
 
-  for (const node of promptSpec.nodes) {
+  for (let index = 0; index < promptSpec.nodes.length; index += 1) {
+    const node = promptSpec.nodes[index];
     const result = await runnable.invoke({ node });
+    let enrichedOutput = result;
+
+    if (node.type === "reason.hybrid") {
+      const decision = evaluateHybridDecision(promptSpec, index);
+      gatingDecisions.push(decision);
+      enrichedOutput = {
+        ...result,
+        note: decision.rationale || `Hybrid router selected ${decision.selectedBranch} branch.`,
+        gating: {
+          selectedBranch: decision.selectedBranch,
+          rationale: decision.rationale,
+          thresholds: decision.thresholds,
+          metrics: decision.metrics,
+        },
+      };
+    }
+
     outputs.push({
       id: node.id,
       block: node.block,
       params: node.params,
-      output: result,
+      output: enrichedOutput,
     });
   }
 
@@ -69,7 +102,9 @@ export async function executeLangGraph(promptSpec: PromptSpec): Promise<LangGrap
       nodeCount: promptSpec.nodes.length,
       edgeCount: promptSpec.edges.length,
       blocks: outputs,
+      complexityScore,
     },
+    gatingDecisions,
     message: "Executed via LangGraph runnable stub. Replace with a full graph runtime to call real models.",
   };
 }
