@@ -39,6 +39,20 @@ Modern, Zapier‑like workflow studio for prompts: drag‑and‑drop blocks (RAG
 - The Studio supports: YAML‑driven block metadata, slot forms, prompt previews, PromptSpec export, snapping canvas, run preview (stubbed), context menus, and a Coach panel that reads `when_to_use`, `failure_modes`, and composition steps.
 - Shared assets live at repo root (`prompts/`, `compositions/`, `schemas/`). See `AGENTS.md` and `docs/Instructions for Prompt.md` for the Master Build Spec and block catalog.
 
+## Mapping Mini-Language
+Placeholders now support a safe helper DSL for data pills:
+
+| Helper | Example | Description |
+| --- | --- | --- |
+| `coalesce(a,b,…)` | `{{coalesce(prev.summary, user.topic)}}` | first non-empty value |
+| `join(list, sep)` | `{{join(results, ", ")}}` | join arrays |
+| `upper(x)` / `lower(x)` | `{{upper(user.region)}}` | change casing |
+| `pick(obj, "path.to.key")` | `{{pick(context, "sources.0.title")}}` | dot-path lookup |
+| `sum(list)` | `{{sum(tokens)}}` | sum numeric arrays |
+| `formatDate(value, "date|time|iso")` | `{{formatDate(run.startedAt, "date")}}` | format timestamps |
+
+Conditionals (`{{#if …}}`) evaluate the same expressions, so you can gate sections with `{{#if coalesce(a,b)}}…{{/if}}`.
+
 ## Contributing
 Contributions that strengthen typed schemas (Zod), provider adapters, streaming run previews, mapping DSL, and reproducibility utilities are welcome. Please open small PRs and include tests.
 

@@ -76,6 +76,7 @@ For the master product spec, see: `docs/Instructions for Prompt.md`.
 - Edges: left/right handles; user edges appear in compiled PromptSpec.
 - Save/Load: Flow dialog or `window.__testReplaceFlow(snapshot)` in tests.
 - Inspectors: pull `when_to_use`, `failure_modes`, `acceptance_criteria` directly from YAML.
+- Mapping DSL: placeholders/data pills support helpers like `coalesce`, `join`, `upper/lower`, `pick`, `sum`, `formatDate` for deterministic transforms.
 - Commands: Dev `cd studio && npm run dev`; Unit `npm run test:unit`; E2E `npm run test:e2e` (install browsers first); Build `npm run build && npm start`.
 
 ---

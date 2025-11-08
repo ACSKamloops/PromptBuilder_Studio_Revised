@@ -47,6 +47,7 @@ import type { PromptSpec } from "@/lib/promptspec";
 import { CanvasNodeCard } from "@/components/canvas-node";
 import { SmartEdge } from "@/components/flow-edge";
 import { resolveBlockDescriptor } from "@/lib/blocks";
+import { evaluateExpression } from "@/lib/mapping-expression";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -87,7 +88,7 @@ function renderPromptTemplate(template: string, context: Record<string, unknown>
     /\{\{#if\s+([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g,
     (_match, rawKey, blockContent) => {
       const key = String(rawKey).trim();
-      const value = context[key];
+      const value = evaluateExpression(key, context);
       if (
         value === undefined ||
         value === null ||
@@ -102,17 +103,13 @@ function renderPromptTemplate(template: string, context: Record<string, unknown>
   );
 
   return renderedConditionals.replace(/\{\{([^#\/][^}]*)\}\}/g, (_match, rawKey) => {
-    const key = String(rawKey).trim();
-    const value = context[key];
-    if (value === undefined || value === null) {
-      return "";
-    }
+    const expr = String(rawKey).trim();
+    const value = evaluateExpression(expr, context);
+    if (value === undefined || value === null) return "";
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
       return String(value);
     }
-    if (Array.isArray(value)) {
-      return value.join(", ");
-    }
+    if (Array.isArray(value)) return value.join(", ");
     try {
       return JSON.stringify(value);
     } catch {
