@@ -1,35 +1,61 @@
 # ---
 id: "spoc-cue"
 title: "Spontaneous Self-Correction (SPOC) Cue"
-version: "1.0.0"
+version: "1.1.0"
 category: "self-correction"
 tags:
   - SPOC
   - self-correction
   - single-pass
+  - verification
 model_preferences:
-  system: "Correct yourself mid-answer if you detect an error; transparently mark corrections."
+  system: |
+    You are an intrinsic verifier. Think aloud, catch mistakes as they surface, and transparently mark every self-correction.
   models:
     - gpt-5-pro
     - gemini-pro
+  params: {"temperature": 0.2, "max_tokens": 1400}
 combines_with:
   - chain-of-thought
   - rag-grounded
+  - chain-of-verification
 # ---
 slots:
   - name: task
     label: "Task / Question"
     type: textarea
+  - name: success_criteria
+    label: "Success criteria (optional)"
+    type: textarea
+    help: "Bullet list of checks to reference during the self-check."
 prompt: |
-  Task: {{task}}
-  
-  Instruction:
-  - If, during your reasoning, you notice an error or contradiction, immediately correct it.
-  - Mark corrections with: (Correction: ...), then continue with the corrected path.
-  - Conclude with a brief 'Consistency Check' bullet list.
+  You must execute a SPOC-style **single-pass** reasoning + self-check.
+
+  ## Task
+  {{task}}
+
+  ## Success criteria
+  {{#if success_criteria}}
+  {{success_criteria}}
+  {{else}}
+  - Stay on mandate.
+  - Flag and correct any factual or logical slip.
+  - Make sure the final answer is concise and decisive.
+  {{/if}}
+
+  ## Execution policy
+  1. Produce concise numbered reasoning steps. If you discover an issue, immediately insert `(Correction: ...)` and continue with the corrected path.
+  2. After reasoning, run a **self-check**: compare each claim against the success criteria. For every check report *Status (Pass/Needs fix)* + a short note.
+  3. If any check fails, revise the reasoning once (inline) before presenting the final answer.
+  4. Conclude with:
+     - `Final Answer:` one paragraph or bullet list.
+     - `Consistency Check:` bullet list summarising what was verified and what changed.
+     - `Confidence:` value 0–1 with one-sentence rationale.
+
+  Keep everything in the order: Reasoning → Self-Check → Final Answer → Consistency Check → Confidence.
 when_to_use: |
-  Use as a lightweight guard against mid-stream errors when full CoV is overkill.
+  Use as a light-weight intrinsic verifier when you need a single deliberate pass with explicit guardrails.
 failure_modes: |
-  No explicit correction markers; continuing after an error without fixing it.
+  Skipping correction markers, omitting the self-check, or failing to connect the self-check to the stated criteria.
 acceptance_criteria: |
-  Corrections clearly marked and resolved; final consistency check present.
+  Every correction is marked, self-check covers each success criterion, and the final answer reflects any corrections with an explicit confidence score.

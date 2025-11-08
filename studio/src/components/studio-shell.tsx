@@ -1986,6 +1986,12 @@ function CanvasPanel({
                         </p>
                         <p className="text-muted-foreground">${runResult.costUsd.toFixed(4)} · {runResult.latencyMs} ms</p>
                       </div>
+                      <div>
+                        <p className="font-medium">Verifier</p>
+                        <p className="text-muted-foreground">
+                          {runResult.verification.totalInterventions} interventions · avg confidence {runResult.verification.averageConfidence.toFixed(2)}
+                        </p>
+                      </div>
                     </div>
                     <p className="text-xs text-muted-foreground">{runResult.message}</p>
                   </div>
@@ -1993,45 +1999,83 @@ function CanvasPanel({
                     {runResult.manifest.blocks.map((block) => (
                       <div
                         key={block.id}
-                        className="rounded-lg border border-border bg-card p-3 text-xs leading-relaxed space-y-1"
+                        className="rounded-lg border border-border bg-card p-3 text-xs leading-relaxed space-y-2"
                       >
-                        <p className="text-sm font-semibold">{block.block}</p>
-                        <p className="text-muted-foreground">
-                          Output: {block.output.note ?? "No output"}
-                        </p>
-                        {block.output.guidance && (
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <p className="text-sm font-semibold text-foreground">{block.block}</p>
                           <p className="text-muted-foreground">
-                            Guidance: {block.output.guidance}
+                            Mode: {block.output.mode} · Iterations {block.output.iterations}/{block.output.maxIterations}
                           </p>
+                        </div>
+                        {block.output.final && (
+                          <div className="space-y-1">
+                            <p className="font-medium text-foreground">Final</p>
+                            <p className="text-muted-foreground whitespace-pre-wrap">{block.output.final}</p>
+                          </div>
+                        )}
+                        {block.output.verifier && (
+                          <div className="space-y-1">
+                            <p className="font-medium text-foreground">Verifier</p>
+                            <p className="text-muted-foreground">
+                              Verdict: {block.output.verifier.verdict} · Confidence {block.output.verifier.confidence.toFixed(2)} · Interventions {block.output.verifier.interventions}
+                            </p>
+                            {block.output.verifier.notes?.length > 0 && (
+                              <ul className="list-disc pl-5 text-muted-foreground space-y-0.5">
+                                {block.output.verifier.notes.map((note) => (
+                                  <li key={note}>{note}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
+                        {Array.isArray(block.output.selfCheck) && block.output.selfCheck.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="font-medium text-foreground">Self-check</p>
+                            <ul className="space-y-0.5">
+                              {block.output.selfCheck.map((item, idx) => (
+                                <li key={`${item.iteration}-${idx}`} className="text-muted-foreground">
+                                  <span className="font-medium">[{item.status === "pass" ? "pass" : "needs fix"}]</span> {item.label} — {item.note}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {block.output.history?.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="font-medium text-foreground">Transcript</p>
+                            <ul className="space-y-0.5 text-muted-foreground">
+                              {block.output.history.map((entry, idx) => (
+                                <li key={`${entry.role}-${entry.iteration}-${idx}`}>
+                                  <span className="font-medium">{entry.role}</span> (iter {entry.iteration}): {entry.content}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {block.output.guidance && (
+                          <p className="text-muted-foreground">Guidance: {block.output.guidance}</p>
                         )}
                         {block.output.failureModes && (
-                          <p className="text-muted-foreground">
-                            Failure modes: {block.output.failureModes}
-                          </p>
+                          <p className="text-muted-foreground">Failure modes: {block.output.failureModes}</p>
                         )}
                         {block.output.acceptanceCriteria && (
+                          <p className="text-muted-foreground">Acceptance criteria: {block.output.acceptanceCriteria}</p>
+                        )}
+                        {Array.isArray(block.output.combinesWith) && block.output.combinesWith.length > 0 && (
                           <p className="text-muted-foreground">
-                            Acceptance criteria: {block.output.acceptanceCriteria}
+                            Combines with: {block.output.combinesWith.join(", ")}
                           </p>
                         )}
-                        {Array.isArray(block.output.combinesWith) &&
-                          block.output.combinesWith.length > 0 && (
-                            <p className="text-muted-foreground">
-                              Combines with: {block.output.combinesWith.join(", ")}
-                            </p>
-                          )}
-                        {Array.isArray(block.output.compositionSteps) &&
-                          block.output.compositionSteps.length > 0 && (
-                            <p className="text-muted-foreground">
-                              Composition steps: {block.output.compositionSteps.join(" → ")}
-                            </p>
-                          )}
-                        {block.output.paramsUsed &&
-                          Object.keys(block.output.paramsUsed).length > 0 && (
-                            <p className="text-muted-foreground">
-                              Params provided: {Object.keys(block.output.paramsUsed).join(", ")}
-                            </p>
-                          )}
+                        {Array.isArray(block.output.compositionSteps) && block.output.compositionSteps.length > 0 && (
+                          <p className="text-muted-foreground">
+                            Composition steps: {block.output.compositionSteps.join(" → ")}
+                          </p>
+                        )}
+                        {block.output.paramsUsed && Object.keys(block.output.paramsUsed).length > 0 && (
+                          <p className="text-muted-foreground">
+                            Params provided: {Object.keys(block.output.paramsUsed).join(", ")}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -2054,7 +2098,7 @@ function CanvasPanel({
                             <div className="min-w-0">
                               <p className="truncate font-medium text-foreground">{entry.runId}</p>
                               <p className="text-muted-foreground">
-                                {new Date(entry.startedAt).toLocaleTimeString()} · {entry.usage.totalTokens} tokens
+                                {new Date(entry.startedAt).toLocaleTimeString()} · {entry.usage.totalTokens} tokens · conf {entry.verification.averageConfidence.toFixed(2)}
                               </p>
                             </div>
                             <div className="text-muted-foreground">${entry.costUsd.toFixed(4)}</div>

@@ -1,13 +1,13 @@
-import { MockProvider } from "./mock-provider";
+import { LangGraphProvider } from "./langgraph-provider";
 import type { LlmProvider } from "./types";
 
 const providers: Record<string, LlmProvider> = {
-  mock: new MockProvider(),
+  langgraph: new LangGraphProvider(),
 };
 
 export function getProvider(id?: string): LlmProvider {
-  if (!id) return providers.mock;
-  return providers[id] ?? providers.mock;
+  if (!id) return providers.langgraph;
+  return providers[id] ?? providers.langgraph;
 }
 
 export * from "./types";

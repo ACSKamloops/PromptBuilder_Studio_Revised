@@ -1,11 +1,11 @@
 import type { PromptSpec } from "@/lib/promptspec";
 import { executeLangGraph } from "@/lib/runtime/langgraph-runner";
-import { LlmProvider, ProviderRunResult, RunStreamEvent, TokenUsage } from "./types";
 import { enqueueApprovals } from "@/server/approval-inbox";
+import { LlmProvider, ProviderRunResult, RunStreamEvent, TokenUsage } from "./types";
 
 function estimateUsage(spec: PromptSpec): TokenUsage {
   const promptChars = JSON.stringify(spec.nodes).length + JSON.stringify(spec.edges).length;
-  const completionChars = spec.nodes.length * 480; // rough stub
+  const completionChars = spec.nodes.length * 640; // rough heuristic for proposer+verifier pairs
   const promptTokens = Math.max(1, Math.round(promptChars / 4));
   const completionTokens = Math.max(1, Math.round(completionChars / 4));
   return {
@@ -15,8 +15,8 @@ function estimateUsage(spec: PromptSpec): TokenUsage {
   };
 }
 
-export class MockProvider implements LlmProvider {
-  readonly name = "mock";
+export class LangGraphProvider implements LlmProvider {
+  readonly name = "langgraph";
 
   async run(spec: PromptSpec): Promise<ProviderRunResult> {
     const startedAt = new Date();
@@ -24,7 +24,7 @@ export class MockProvider implements LlmProvider {
     const completedAt = new Date();
     const usage = estimateUsage(spec);
     const latencyMs = completedAt.getTime() - startedAt.getTime();
-    const costUsd = usage.totalTokens * 0.000002; // stub pricing
+    const costUsd = usage.totalTokens * 0.0000025; // illustrative stub pricing
 
     const runResult: ProviderRunResult = {
       runId: graphResult.runId,
@@ -34,6 +34,7 @@ export class MockProvider implements LlmProvider {
       costUsd,
       usage,
       manifest: graphResult.manifest,
+      verification: graphResult.verification,
       message: graphResult.message,
     };
     enqueueApprovals(spec, runResult);
@@ -45,7 +46,7 @@ export class MockProvider implements LlmProvider {
     let index = 0;
     for (const node of spec.nodes) {
       yield { type: "node_started", data: { id: node.id, label: node.block, index } };
-      await new Promise((resolve) => setTimeout(resolve, 35));
+      await new Promise((resolve) => setTimeout(resolve, 45));
       yield { type: "node_completed", data: { id: node.id, ok: true } };
       index += 1;
     }

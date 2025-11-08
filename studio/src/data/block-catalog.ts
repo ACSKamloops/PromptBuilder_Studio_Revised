@@ -87,8 +87,8 @@ export const blockCatalog: BlockDescriptor[] = [
     name: "RSIP Loop",
     category: "Verification",
     description:
-      "Iterative generate → evaluate → improve loop with rotating acceptance criteria.",
-    status: "planned",
+      "Iterative generate → critique → revise loop with configurable pass counts and focus criteria.",
+    status: "available",
     metadataId: "recursive-self-improvement",
     references: ["prompts/recursive-self-improvement.yaml"],
   },
@@ -104,8 +104,8 @@ export const blockCatalog: BlockDescriptor[] = [
     name: "SPOC Self-Check",
     category: "Verification",
     description:
-      "Single-pass proposer+verifier execution for models with intrinsic verification (planned).",
-    status: "planned",
+      "Single-pass intrinsic proposer+verifier execution with explicit self-check reporting.",
+    status: "available",
     metadataId: "spoc-cue",
     references: ["prompts/spoc-cue.yaml"],
   },

@@ -6,7 +6,7 @@
 ## 1. Run Manifest (record per execution)
 - Model + provider adapter (`openai:gpt-4.1-mini`, `anthropic:sonnet`, etc.).
 - PromptSpec hash (nodes + params + edges + slot values) and UI blueprint version.
-- LangGraph manifest ID + runId + run ledger entry (tokens, latency, cost).
+- LangGraph manifest ID + runId + run ledger entry (tokens, latency, cost, verifier verdict/confidence/interventions).
 - RAG snapshot (queries, retrieved documents, citation IDs, chunk settings).
 - Mapping DSL inputs (resolved expressions) and any JSON transforms.
 - Verification evidence (CoV plan/questions/answers, RSIP passes, SPOC trace).

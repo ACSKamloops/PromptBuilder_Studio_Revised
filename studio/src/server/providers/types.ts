@@ -15,6 +15,7 @@ export interface ProviderRunResult {
   costUsd: number;
   usage: TokenUsage;
   manifest: LangGraphRunResult["manifest"];
+  verification: LangGraphRunResult["verification"];
   message: string;
 }
 

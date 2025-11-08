@@ -1,5 +1,6 @@
 import type { LangGraphRunBlock } from "@/lib/runtime/langgraph-runner";
 import type { PromptSpec } from "@/lib/promptspec";
+import type { LangGraphVerificationSummary } from "@/lib/runtime/langgraph-runner";
 
 export interface TokenUsage {
   promptTokens: number;
@@ -22,6 +23,7 @@ export interface RunRecord {
   costUsd: number;
   usage: TokenUsage;
   manifest: RunManifest;
+  verification: LangGraphVerificationSummary;
   message: string;
 }
 
