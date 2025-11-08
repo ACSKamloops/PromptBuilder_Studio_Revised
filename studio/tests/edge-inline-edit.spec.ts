@@ -1,12 +1,17 @@
 import { test, expect } from '@playwright/test';
+import type { StudioTestWindow } from './test-window';
 
 test.describe('Edge inline edit', () => {
   test('rename and delete user edge inline', async ({ page }) => {
     await page.goto('/');
     // Create flow with one extra node and an edge to baseline 'cov'
-    await page.waitForFunction(() => typeof (window as any).__testReplaceFlow === 'function');
+    await page.waitForFunction(() => {
+      const w = window as StudioTestWindow;
+      return typeof w.__testReplaceFlow === 'function';
+    });
     await page.evaluate(() => {
-      (window as any).__testReplaceFlow({
+      const w = window as StudioTestWindow;
+      w.__testReplaceFlow?.({
         extras: [{ id: 'rag-retriever#e2e1', baseId: 'rag-retriever', position: { x: 360, y: 160 } }],
         edges: [{ source: 'rag-retriever#e2e1', target: 'cov' }],
       });

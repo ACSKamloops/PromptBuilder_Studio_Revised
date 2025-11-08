@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { StudioTestWindow } from './test-window';
 
 const selectPreset = async (page, label: string | RegExp) => {
   // Try UI first
@@ -16,8 +17,14 @@ const selectPreset = async (page, label: string | RegExp) => {
     };
     const key = typeof label === 'string' ? label : 'Deep Research — RAG + CoV';
     const presetId = map[key] ?? 'composition-deep_research';
-    await page.waitForFunction(() => typeof (window as any).__testReplaceFlow === 'function');
-    await page.evaluate((presetId) => (window as any).__testReplaceFlow?.({ presetId }), presetId);
+    await page.waitForFunction(() => {
+      const w = window as StudioTestWindow;
+      return typeof w.__testReplaceFlow === 'function';
+    });
+    await page.evaluate((id) => {
+      const w = window as StudioTestWindow;
+      w.__testReplaceFlow?.({ presetId: id });
+    }, presetId);
   }
 };
 

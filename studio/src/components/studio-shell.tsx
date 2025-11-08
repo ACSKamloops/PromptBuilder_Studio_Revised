@@ -26,7 +26,6 @@ import uiBlueprintJson from "@/config/uiBlueprint.json" assert { type: "json" };
 import type { UIBlueprint } from "@/types/ui-blueprint";
 import { CoachPanel, type CoachInsight } from "@/components/coach-panel";
 
-import type { LangGraphRunBlockOutput } from "@/lib/runtime/langgraph-runner";
 import { useHotkeys } from "react-hotkeys-hook";
 
 const uiBlueprint = uiBlueprintJson as UIBlueprint;
@@ -49,11 +48,13 @@ import { SmartEdge } from "@/components/flow-edge";
 import { resolveBlockDescriptor } from "@/lib/blocks";
 import { evaluateExpression } from "@/lib/mapping-expression";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { DndContext, DragOverlay, useDraggable } from "@dnd-kit/core";
+import { Info } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -64,9 +65,10 @@ import {
 } from "@/components/ui/dialog";
 import { OnboardingDialog } from "@/components/onboarding-dialog";
 import type { RunRecord } from "@/types/run";
+import type { ApprovalTask } from "@/types/approval";
 
 const RAG_DEFAULT_PARAMS = {
-  rag_sources: [] as Array<{ kind: "file" | "web" | "collection"; ref: string }>,
+  rag_sources: [] as RagSource[],
   rag_topK: 5,
   rag_chunkSize: 1200,
   rag_chunkOverlap: 120,
@@ -76,6 +78,13 @@ const RAG_DEFAULT_PARAMS = {
 };
 
 const isRagBlock = (baseId: string) => baseId === "rag-retriever" || baseId === "graphrag";
+const APPROVAL_DEFAULT_PARAMS = {
+  approval_assignees: [] as string[],
+  approval_slaHours: 0,
+  approval_autoApprove: false,
+  approval_notes: "",
+};
+const isApprovalBlock = (baseId: string) => baseId === "approval-gate";
 
 type RunPreviewResponse = RunRecord;
 
@@ -94,6 +103,49 @@ type FlowNodeData = {
 };
 
 type FlowNode = Node<FlowNodeData>;
+type RagSource = { kind: "file" | "web" | "collection"; ref: string };
+type FlowSnapshot = {
+  extraNodes: FlowNode[];
+  userEdges: Edge[];
+  positions: Record<string, { x: number; y: number }>;
+  customLabels: Record<string, string>;
+  nodeParams: Record<string, Record<string, unknown>>;
+  selectedNodeId: string;
+};
+type TestFlowImport = {
+  presetId?: string;
+  extras?: Array<{
+    id?: string;
+    baseId?: string;
+    position?: { x: number; y: number };
+    label?: string;
+    params?: Record<string, unknown>;
+  }>;
+  edges?: Array<{ source: string; target: string }>;
+};
+type StudioTestWindow = Window &
+  typeof globalThis & {
+    __extraNodes?: string[];
+    __testCreateNode?: (id: string, x?: number, y?: number) => void;
+    __testReplaceFlow?: (snap: TestFlowImport) => void;
+    __testDeleteFirstExtra?: () => void;
+    __testOpenQuickInsert?: (edgeId: string) => void;
+    __testOpenCommandPalette?: () => void;
+    __testOpenNodeMenu?: (id: string) => void;
+    __testShowToolbarFor?: (id: string) => void;
+    __testGetExtraIds?: () => string[];
+    __lastMousePos?: { x: number; y: number };
+  };
+
+const getTestWindow = (): StudioTestWindow | null =>
+  typeof window === "undefined" ? null : (window as StudioTestWindow);
+
+const escapeNodeId = (value: string) => {
+  if (typeof window === "undefined") return value;
+  return typeof window.CSS?.escape === "function"
+    ? window.CSS.escape(value)
+    : value.replace(/([#.:\[\],=])/g, "\\$1");
+};
 
 function renderPromptTemplate(template: string, context: Record<string, unknown>): string {
   const renderedConditionals = template.replace(
@@ -247,10 +299,11 @@ export default function StudioShell({ library, presets, initialPresetId }: Studi
   // Extra nodes created via drag-and-drop
   const [extraNodes, setExtraNodes] = useState<FlowNode[]>([]);
   // Mirror extra node ids for tests
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    (window as any).__extraNodes = extraNodes.map((n) => n.id);
-  }, [extraNodes]);
+useEffect(() => {
+  const testWindow = getTestWindow();
+  if (!testWindow) return;
+  testWindow.__extraNodes = extraNodes.map((n) => n.id);
+}, [extraNodes]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -300,20 +353,18 @@ useEffect(() => {
 
   const [userEdges, setUserEdges] = useState<Edge[]>([]);
   const edges = useMemo(() => [...buildEdges(activePreset), ...userEdges], [activePreset, userEdges]);
-  const [nodeStatuses, setNodeStatuses] = useState<Record<string, FlowNodeData['status']>>({});
-  const [saveState, setSaveState] = useState<'saved'|'saving'>('saved');
-  const rfInstRef = useRef<ReactFlowInstance | null>(null);
-  const flowWrapperRef = useRef<HTMLDivElement | null>(null);
   // toast message + custom labels per preset
-const [toastMsg, setToastMsg] = useState<string | null>(null);
-const [customLabels, setCustomLabels] = useState<Record<string, string>>({});
-const [dragOverlayBlock, setDragOverlayBlock] = useState<{ label: string; summary?: string; category?: string } | null>(null);
-const [isDraggingBlock, setIsDraggingBlock] = useState(false);
-const [librarySheetOpen, setLibrarySheetOpen] = useState(false);
-const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [customLabels, setCustomLabels] = useState<Record<string, string>>({});
+  const [dragOverlayBlock, setDragOverlayBlock] = useState<{ label: string; summary?: string; category?: string } | null>(null);
+  const [isDraggingBlock, setIsDraggingBlock] = useState(false);
+  const [librarySheetOpen, setLibrarySheetOpen] = useState(false);
+  const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false);
+  const [approvals, setApprovals] = useState<ApprovalTask[]>([]);
+  const [approvalsOpen, setApprovalsOpen] = useState(false);
   // simple undo/redo history
-  const [historyPast, setHistoryPast] = useState<any[]>([]);
-  const [historyFuture, setHistoryFuture] = useState<any[]>([]);
+  const [historyPast, setHistoryPast] = useState<FlowSnapshot[]>([]);
+  const [historyFuture, setHistoryFuture] = useState<FlowSnapshot[]>([]);
   const hydratedExtrasRef = useRef(false);
   const baselineNodes = useMemo(() => {
     const base = buildNodes(activePreset, positions, metadataById);
@@ -322,10 +373,9 @@ const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false);
       data: {
         ...n.data,
         label: customLabels[n.id] ?? n.data.label,
-        status: nodeStatuses[n.id] ?? 'idle',
       },
     }));
-  }, [activePreset, positions, metadataById, nodeStatuses, customLabels]);
+  }, [activePreset, positions, metadataById, customLabels]);
   const nodes = useMemo(() => [...baselineNodes, ...extraNodes], [baselineNodes, extraNodes]);
 const promptSpec = useMemo(() => {
     const base = buildPromptSpec(activePreset, nodeParams, metadataById);
@@ -372,13 +422,42 @@ const promptSpec = useMemo(() => {
     () => deriveFlowRecommendations(activePreset),
     [activePreset],
   );
-
   // Clipboard helpers
   const showToast = useCallback((msg: string) => {
     setToastMsg(msg);
     if (typeof window !== 'undefined') window.setTimeout(() => setToastMsg(null), 2200);
   }, []);;
-
+  const loadApprovals = useCallback(async () => {
+    try {
+      const res = await fetch("/api/approvals", { cache: "no-store" });
+      const data = await res.json();
+      if (Array.isArray(data?.approvals)) {
+        setApprovals(data.approvals as ApprovalTask[]);
+      }
+    } catch {
+      // ignore fetch errors
+    }
+  }, []);
+  const pendingApprovals = approvals.filter((task) => task.status === "pending");
+  const handleApprovalAction = useCallback(
+    async (task: ApprovalTask, action: "approve" | "reject") => {
+      const note =
+        action === "reject"
+          ? window.prompt("Add a note for the requester (optional):", task.notes ?? "") ?? undefined
+          : undefined;
+      await fetch("/api/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: task.id, action, note }),
+      }).catch(() => undefined);
+      loadApprovals();
+    },
+    [loadApprovals],
+  );
+  useEffect(() => {
+    if (!approvalsOpen) return;
+    loadApprovals();
+  }, [approvalsOpen, loadApprovals]);
   const resolveBlockPreview = useCallback((blockId: string) => {
     const baseId = blockId.split('#')[0];
     const fromCatalog = blockCatalog.find((b) => b.id === baseId);
@@ -443,54 +522,68 @@ const promptSpec = useMemo(() => {
     }
   }, [showToast]);
 
-  const copyNodeJson = useCallback(async (id: string) => {
-    const n = nodes.find((x) => x.id === id);
-    if (!n) return;
-    const json = JSON.stringify({
-      id: n.id,
-      baseId: (n.id.includes('#') ? n.id.split('#')[0] : n.id),
-      position: n.position,
-      label: (n.data as any)?.label,
-      params: getNodeParams(n.id),
-    }, null, 2);
-    try {
-      await navigator.clipboard?.writeText(json);
-      showToast('Node JSON copied');
-    } catch {
-      showToast('Clipboard unavailable');
-    }
-  }, [nodes, getNodeParams, showToast]);
+  const copyNodeJson = useCallback(
+    async (id: string) => {
+      const node = nodes.find((x) => x.id === id);
+      if (!node) return;
+      const data = node.data;
+      const json = JSON.stringify(
+        {
+          id: node.id,
+          baseId: node.id.includes("#") ? node.id.split("#")[0] : node.id,
+          position: node.position,
+          label: data?.label ?? node.id,
+          params: getNodeParams(node.id),
+        },
+        null,
+        2,
+      );
+      try {
+        await navigator.clipboard?.writeText(json);
+        showToast("Node JSON copied");
+      } catch {
+        showToast("Clipboard unavailable");
+      }
+    },
+    [nodes, getNodeParams, showToast],
+  );
 
-  const copyTemplate = useCallback(async (id: string) => {
-    const n = nodes.find((x) => x.id === id);
-    if (!n) return;
-    const baseId = (n.id.includes('#') ? n.id.split('#')[0] : n.id);
-    const params = Object.keys(getNodeParams(id) ?? {});
-    const tpl = {
-      id: baseId,
-      name: (n.data as any)?.label ?? baseId,
-      description: (n.data as any)?.summary ?? '',
-      slots: params.map((p) => ({ name: p, type: 'text', default: '' })),
-    };
-    try {
-      await navigator.clipboard?.writeText(JSON.stringify(tpl, null, 2));
-      showToast('Template JSON copied');
-    } catch {
-      showToast('Clipboard unavailable');
-    }
-  }, [nodes, getNodeParams, showToast]);
+  const copyTemplate = useCallback(
+    async (id: string) => {
+      const node = nodes.find((x) => x.id === id);
+      if (!node) return;
+      const baseId = node.id.includes("#") ? node.id.split("#")[0] : node.id;
+      const params = Object.keys(getNodeParams(id) ?? {});
+      const tpl = {
+        id: baseId,
+        name: node.data?.label ?? baseId,
+        description: node.data?.summary ?? "",
+        slots: params.map((p) => ({ name: p, type: "text", default: "" })),
+      };
+      try {
+        await navigator.clipboard?.writeText(JSON.stringify(tpl, null, 2));
+        showToast("Template JSON copied");
+      } catch {
+        showToast("Clipboard unavailable");
+      }
+    },
+    [nodes, getNodeParams, showToast],
+  );
 
   // History helpers
-  const snapshotState = useCallback(() => ({
-    extraNodes,
-    userEdges,
-    positions,
-    customLabels,
-    nodeParams,
-    selectedNodeId,
-  }), [extraNodes, userEdges, positions, customLabels, nodeParams, selectedNodeId]);
+  const snapshotState = useCallback<() => FlowSnapshot>(
+    () => ({
+      extraNodes,
+      userEdges,
+      positions,
+      customLabels,
+      nodeParams,
+      selectedNodeId,
+    }),
+    [extraNodes, userEdges, positions, customLabels, nodeParams, selectedNodeId],
+  );
 
-  const applySnapshot = useCallback((snap: ReturnType<typeof snapshotState>) => {
+  const applySnapshot = useCallback((snap: FlowSnapshot) => {
     setExtraNodes(snap.extraNodes ?? []);
     setUserEdges(snap.userEdges ?? []);
     setPositions(snap.positions ?? {});
@@ -517,10 +610,10 @@ const promptSpec = useMemo(() => {
 
   useHotkeys(["ctrl+shift+z", "meta+shift+z"], () => {
     if (!historyFuture.length) return;
-    const [next, ...rest] = historyFuture as any[];
+    const [next, ...rest] = historyFuture;
     setHistoryFuture(rest);
     setHistoryPast((p) => [...p, snapshotState()]);
-    applySnapshot(next as any);
+    applySnapshot(next);
   }, [historyFuture, snapshotState, applySnapshot]);
 
 
@@ -617,14 +710,13 @@ const promptSpec = useMemo(() => {
 
   const redo = useCallback(() => {
     if (!historyFuture.length) return;
-    const [next, ...rest] = historyFuture as any[];
+    const [next, ...rest] = historyFuture;
     setHistoryFuture(rest);
     setHistoryPast((p) => [...p, snapshotState()]);
-    applySnapshot(next as any);
+    applySnapshot(next);
   }, [historyFuture, snapshotState, applySnapshot]);
 
   const handleParamChange = (blockId: string, key: string, value: unknown) => {
-    setSaveState('saving');
     setNodeParams((prev) => ({
       ...prev,
       [blockId]: {
@@ -632,7 +724,6 @@ const promptSpec = useMemo(() => {
         [key]: value,
       },
     }));
-    setTimeout(() => setSaveState('saved'), 250);
   };
 
   const handleCreateNode = useCallback(
@@ -650,7 +741,8 @@ const promptSpec = useMemo(() => {
           )
         : {};
       const ragDefaults = isRagBlock(baseId) ? { ...RAG_DEFAULT_PARAMS } : {};
-      const initial = { ...slotDefaults, ...ragDefaults };
+      const approvalDefaults = isApprovalBlock(baseId) ? { ...APPROVAL_DEFAULT_PARAMS } : {};
+      const initial = { ...slotDefaults, ...ragDefaults, ...approvalDefaults };
       if (Object.keys(initial).length > 0) {
         setNodeParams((prev) => ({
           ...prev,
@@ -680,7 +772,7 @@ const promptSpec = useMemo(() => {
 
       setSelectedNodeId(uid);
     },
-    [metadataById],
+    [metadataById, pushHistory],
   );
 
   const handleDeleteNode = useCallback((id: string) => {
@@ -695,7 +787,7 @@ const promptSpec = useMemo(() => {
     });
     try { if (typeof window !== 'undefined') window.localStorage.removeItem(`${storageKey}:extras`); } catch {}
     showToast('Node deleted');
-  }, [showToast, storageKey]);
+  }, [showToast, storageKey, pushHistory]);
 
   const handleDuplicateNode = useCallback((id: string) => {
     pushHistory();
@@ -705,7 +797,7 @@ const promptSpec = useMemo(() => {
     const pos = found?.position ?? { x: 240, y: 160 };
     handleCreateNode(baseId, { x: pos.x + 40, y: pos.y + 40 });
     showToast('Node duplicated');
-  }, [nodes, handleCreateNode, showToast]);
+  }, [nodes, handleCreateNode, showToast, pushHistory]);
   const handleRenameNode = useCallback((id: string, label: string) => {
     pushHistory();
     if (id.includes('#')) {
@@ -714,43 +806,37 @@ const promptSpec = useMemo(() => {
       setCustomLabels((prev) => ({ ...prev, [id]: label }));
     }
     showToast('Node renamed');
-  }, [showToast]);
+  }, [showToast, pushHistory]);
 
   // Expose a test-only hook for creating nodes deterministically
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const w = window as unknown as {
-      __testCreateNode?: (id: string, x?: number, y?: number) => void;
-      __testReplaceFlow?: (snap: { presetId?: string; extras?: Array<{ id?: string; baseId?: string; position?: { x: number; y: number } }>; edges?: Array<{ source: string; target: string }> }) => void;
-      __testDeleteFirstExtra?: () => void;
-    };
-    w.__testCreateNode = (id: string, x = 240, y = 160) => handleCreateNode(id, { x, y });
-    w.__testReplaceFlow = (snap) => {
+    const testWindow = getTestWindow();
+    if (!testWindow) return;
+    testWindow.__testCreateNode = (id: string, x = 240, y = 160) => handleCreateNode(id, { x, y });
+    testWindow.__testReplaceFlow = (snap: TestFlowImport) => {
       if (snap.presetId && snap.presetId !== activePresetId) {
         setActivePresetId(snap.presetId);
       }
       setExtraNodes([]);
       setUserEdges([]);
-      // Create nodes with provided ids so edges can match
       for (const ex of snap.extras ?? []) {
-        const baseId = String(ex.baseId ?? (ex.id ? ex.id.split('#')[0] : 'node'));
-        const id = String(ex.id ?? `${baseId}#${Math.random().toString(36).slice(2,7)}`);
+        const baseId = String(ex.baseId ?? (ex.id ? ex.id.split("#")[0] : "node"));
+        const nextId = String(ex.id ?? `${baseId}#${Math.random().toString(36).slice(2, 7)}`);
         const pos = ex.position ?? { x: 240, y: 160 };
-        handleCreateNode(baseId, pos, id);
+        handleCreateNode(baseId, pos, nextId);
       }
-      // Add edges after nodes exist
       const added: Edge[] = [];
-      for (const e of snap.edges ?? []) {
-        if (e.source && e.target) {
-          added.push({ id: `${e.source}-${e.target}-${added.length + 1}`, source: e.source, target: e.target });
+      for (const edge of snap.edges ?? []) {
+        if (edge.source && edge.target) {
+          added.push({ id: `${edge.source}-${edge.target}-${added.length + 1}`, source: edge.source, target: edge.target });
         }
       }
       if (added.length) setUserEdges(added);
     };
     return () => {
-      if ('__testCreateNode' in w) delete w.__testCreateNode;
-      if ('__testReplaceFlow' in w) delete w.__testReplaceFlow;
+      delete testWindow.__testCreateNode;
+      delete testWindow.__testReplaceFlow;
     };
   }, [handleCreateNode, activePresetId]);
 
@@ -791,7 +877,7 @@ useEffect(() => {
           setDragOverlayBlock(null);
           setIsDraggingBlock(false);
           if (!id) return;
-          (window as unknown as { __testCreateNode?: (id: string, x?: number, y?: number) => void }).__testCreateNode?.(id, 320, 180);
+          getTestWindow()?.__testCreateNode?.(id, 320, 180);
         }}
         onDragCancel={() => {
           setDragOverlayBlock(null);
@@ -848,13 +934,15 @@ useEffect(() => {
             onDeleteEdge={(id) => { setUserEdges((prev) => prev.filter((e) => e.id !== id)); showToast('Edge deleted'); }}
             onRenameEdge={(id, label) => { setUserEdges((prev) => prev.map((e) => e.id === id ? { ...e, label } : e)); showToast('Edge renamed'); }}
             canEditEdge={(id) => userEdges.some((e) => e.id === id)}
-            getParams={getNodeParams}
             onCopyId={copyNodeId}
             onCopyBaseId={copyBaseId}
             onCopyJson={copyNodeJson}
             onConvertToTemplate={copyTemplate}
             onOpenLibrarySheet={() => setLibrarySheetOpen(true)}
             onOpenInspectorSheet={() => setInspectorSheetOpen(true)}
+            onOpenApprovals={() => setApprovalsOpen(true)}
+            onRefreshApprovals={loadApprovals}
+            pendingApprovalCount={pendingApprovals.length}
             onMoveNode={(id, position) => {
               // record history before movement
               pushHistory();
@@ -913,6 +1001,86 @@ useEffect(() => {
           />
         </DialogContent>
       </Dialog>
+      <Dialog open={approvalsOpen} onOpenChange={setApprovalsOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Approvals inbox</DialogTitle>
+            <DialogDescription>
+              Human-in-the-loop tasks generated during runs. Approve or reject to keep the flow moving.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            {approvals.length === 0 ? (
+              <p className="text-muted-foreground">No approval tasks yet.</p>
+            ) : (
+              approvals.map((task) => (
+                <div
+                  key={task.id}
+                  className="rounded-lg border border-border bg-card/60 p-3 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{task.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Run {task.runId} · Node {task.nodeId}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-[11px] uppercase tracking-wide",
+                        task.status === "pending"
+                          ? "bg-amber-100 text-amber-700"
+                          : task.status === "approved"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-red-100 text-red-700",
+                      )}
+                    >
+                      {task.status}
+                    </span>
+                  </div>
+                  {task.assignees.length > 0 && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Assignees: {task.assignees.join(", ")}
+                    </p>
+                  )}
+                  {task.notes && (
+                    <p className="mt-2 text-xs text-muted-foreground">Instructions: {task.notes}</p>
+                  )}
+                  {task.decision && task.status !== "pending" && (
+                    <p className="mt-2 text-xs text-muted-foreground">Decision: {task.decision}</p>
+                  )}
+                  <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <span>
+                      Submitted {new Date(task.submittedAt).toLocaleString()}
+                      {typeof task.slaHours === "number" && task.slaHours > 0
+                        ? ` · SLA ${task.slaHours}h`
+                        : ""}
+                    </span>
+                    {task.status === "pending" && (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleApprovalAction(task, "approve")}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleApprovalAction(task, "reject")}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
       <DragOverlay dropAnimation={null}>
         {dragOverlayBlock ? (
           <div className="w-[260px] opacity-90">
@@ -965,6 +1133,7 @@ function LibraryPanel({
   metadataMap: Map<string, PromptMetadata>;
 }) {
   const [query, setQuery] = useState("");
+  const [infoBlock, setInfoBlock] = useState<{ block: (typeof blockCatalog)[number]; metadata?: PromptMetadata } | null>(null);
   const friendly = (id: string, fallback: string) => {
     const map: Record<string, string> = {
       "system-mandate": "Define Mandate",
@@ -984,6 +1153,7 @@ function LibraryPanel({
     { title: "Formatting & Export", match: (c) => (c ?? '').toLowerCase() === 'output' },
   ];
   return (
+    <>
     <div className="flex h-full flex-col">
       <div className="px-4 py-3">
         <h2 className="text-lg font-semibold">Block Library</h2>
@@ -1008,7 +1178,8 @@ function LibraryPanel({
                 .map((block) => {
                   const metadata = block.metadataId ? metadataMap.get(block.metadataId) : undefined;
                   return (
-              <DraggableBlock id={block.id} key={block.id}>
+              <div key={block.id} className="relative">
+              <DraggableBlock id={block.id}>
               <Card
                 data-testid={`block-card-${block.id}`}
                 className={`cursor-grab active:cursor-grabbing transition hover:border-primary ${
@@ -1017,14 +1188,16 @@ function LibraryPanel({
                 onClick={() => onSelect(block.id)}
               >
                 <CardHeader className="space-y-1">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    {friendly(block.id, block.name)}
-                    {block.status === "planned" && (
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                        Planned
-                      </span>
-                    )}
-                  </CardTitle>
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      {friendly(block.id, block.name)}
+                      {block.status === "planned" && (
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Planned
+                        </span>
+                      )}
+                    </CardTitle>
+                  </div>
                   <CardDescription className="text-xs leading-relaxed">
                     {metadata?.when_to_use
                       ? metadata.when_to_use.split("\n")[0]
@@ -1040,6 +1213,20 @@ function LibraryPanel({
                 </CardHeader>
               </Card>
               </DraggableBlock>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="absolute right-3 top-3 z-10 h-7 w-7 text-muted-foreground"
+                aria-label="View block details"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setInfoBlock({ block, metadata });
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+              </div>
                   );
                 })}
             </div>
@@ -1047,6 +1234,55 @@ function LibraryPanel({
         </div>
       </ScrollArea>
     </div>
+    <Dialog open={Boolean(infoBlock)} onOpenChange={(open) => {
+      if (!open) setInfoBlock(null);
+    }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{infoBlock?.metadata?.title ?? infoBlock?.block.name}</DialogTitle>
+          <DialogDescription>
+            {infoBlock?.metadata?.description ?? infoBlock?.block.description}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 text-sm text-muted-foreground">
+          {infoBlock?.metadata?.when_to_use && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-foreground">When to use</p>
+              <p className="mt-1 whitespace-pre-line text-sm">{infoBlock.metadata.when_to_use}</p>
+            </div>
+          )}
+          {infoBlock?.metadata?.failure_modes && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-foreground">Failure modes</p>
+              <p className="mt-1 whitespace-pre-line text-sm">{infoBlock.metadata.failure_modes}</p>
+            </div>
+          )}
+          {infoBlock?.metadata?.acceptance_criteria && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-foreground">Acceptance</p>
+              <p className="mt-1 whitespace-pre-line text-sm">{infoBlock.metadata.acceptance_criteria}</p>
+            </div>
+          )}
+          {infoBlock?.metadata?.slots?.length ? (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-foreground">Inputs</p>
+              <ul className="mt-2 space-y-1 text-sm">
+                {infoBlock.metadata.slots.map((slot) => (
+                  <li key={slot.name} className="rounded-md border border-border/60 bg-muted/40 px-2 py-1">
+                    <span className="font-semibold text-foreground">{slot.name}</span>{" "}
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">{slot.type}</span>
+                    {slot.description ? (
+                      <span className="block text-xs text-muted-foreground">{slot.description}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -1077,13 +1313,15 @@ function CanvasPanel({
   onDeleteEdge,
   onRenameEdge,
   canEditEdge,
-  getParams,
   onCopyId,
   onCopyBaseId,
   onCopyJson,
   onConvertToTemplate,
   onOpenLibrarySheet,
-  onOpenInspectorSheet
+  onOpenInspectorSheet,
+  onOpenApprovals,
+  onRefreshApprovals,
+  pendingApprovalCount,
 }: {
   onSelectNode: (id: string) => void;
   flow: FlowPreset;
@@ -1111,13 +1349,15 @@ function CanvasPanel({
   onDeleteEdge: (id: string) => void;
   onRenameEdge: (id: string, label: string) => void;
   canEditEdge: (id: string) => boolean;
-  getParams: (id: string) => Record<string, unknown>;
   onCopyId: (id: string) => void;
   onCopyBaseId: (id: string) => void;
   onCopyJson: (id: string) => void;
   onConvertToTemplate: (id: string) => void;
   onOpenLibrarySheet: () => void;
   onOpenInspectorSheet: () => void;
+  onOpenApprovals: () => void;
+  onRefreshApprovals: () => void;
+  pendingApprovalCount: number;
 }) {
   const [rf, setRf] = useState<ReactFlowInstance | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1143,7 +1383,43 @@ function CanvasPanel({
   const [selectedSingleId, setSelectedSingleId] = useState<string | null>(null);
   const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number } | null>(null);
   const renameRef = useRef<HTMLInputElement | null>(null);
-  useHotkeys(["meta+k", "ctrl+k"], (e) => { (e as any)?.preventDefault?.(); setCommandOpen(true); }, [setCommandOpen]);
+  const flowWrapperRef = useRef<HTMLDivElement | null>(null);
+  const [dragGhost, setDragGhost] = useState<{ id: string; label: string; category?: string; position: { x: number; y: number } } | null>(null);
+  const hasExtraNodes = useMemo(() => nodes.some((n) => n.id.includes("#")), [nodes]);
+  const quickSteps = useMemo(
+    () => [
+      {
+        title: "Pick a preset",
+        body: "Use the Flow picker above to load Deep Research, Data Review, or another template.",
+      },
+      {
+        title: "Drag blocks",
+        body: "Grab blocks from the library, hover over the canvas to see their card, then drop to connect.",
+      },
+      {
+        title: "Inspect & run",
+        body: "Select a node to fill inputs on the right, then click Run (Preview) for a staged manifest.",
+      },
+    ],
+    [],
+  );
+  const ghostScreenPosition = useMemo(() => {
+    if (!dragGhost || !rf || !flowWrapperRef.current) return null;
+    const { x, y, zoom } = rf.getViewport();
+    const rect = flowWrapperRef.current.getBoundingClientRect();
+    return {
+      x: rect.left + dragGhost.position.x * zoom + x,
+      y: rect.top + dragGhost.position.y * zoom + y,
+    };
+  }, [dragGhost, rf]);
+  useHotkeys(
+    ["meta+k", "ctrl+k"],
+    (event) => {
+      event?.preventDefault();
+      setCommandOpen(true);
+    },
+    [setCommandOpen],
+  );
   useHotkeys('g', () => setSnapEnabled((v) => !v), [setSnapEnabled]);
   useHotkeys('shift+g', () => {
     setGridSize((prev) => {
@@ -1163,13 +1439,14 @@ function CanvasPanel({
   }, []);
 
   const recalcRenameAnchor = useCallback((id: string) => {
-    try {
-      const esc = (window as any).CSS?.escape ? (window as any).CSS.escape(id) : String(id).replace(/([#.:\[\],=])/g, '\\$1');
-      const header = document.querySelector(`[data-testid="flow-node-${esc}"] .node-drag-handle`) as HTMLElement | null;
-      if (!header) return;
-      const rect = header.getBoundingClientRect();
-      setRename((r) => ({ ...r, x: Math.round(rect.left), y: Math.round(rect.bottom + 6) }));
-    } catch {}
+    if (typeof window === "undefined") return;
+    const esc = escapeNodeId(id);
+    const header = document.querySelector(
+      `[data-testid="flow-node-${esc}"] .node-drag-handle`,
+    ) as HTMLElement | null;
+    if (!header) return;
+    const rect = header.getBoundingClientRect();
+    setRename((r) => ({ ...r, x: Math.round(rect.left), y: Math.round(rect.bottom + 6) }));
   }, []);
 
   const openNodeMenu = useCallback((id: string, x: number, y: number) => {
@@ -1184,42 +1461,49 @@ function CanvasPanel({
 
   // Test helpers
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const w = window as any;
-    w.__testOpenQuickInsert = (edgeId: string) => {
+    const testWindow = getTestWindow();
+    if (!testWindow) return;
+    testWindow.__testOpenQuickInsert = (edgeId: string) => {
       const edge = edges.find((e) => e.id === edgeId);
       if (!edge) return;
-      setEdgeQuickAdd({ open: true, x: 320, y: 180, id: edge.id, source: String(edge.source), target: String(edge.target) });
+      setEdgeQuickAdd({
+        open: true,
+        x: 320,
+        y: 180,
+        id: edge.id,
+        source: String(edge.source),
+        target: String(edge.target),
+      });
     };
-    w.__testOpenCommandPalette = () => setCommandOpen(true);
-    w.__testOpenNodeMenu = (id: string) => {
-      try {
-        const esc = (window as any).CSS?.escape ? (window as any).CSS.escape(id) : String(id).replace(/([#.:\[\],=])/g, '\\$1');
-        const header = document.querySelector(`[data-testid="flow-node-${esc}"] .node-drag-handle`) as HTMLElement | null;
-        const r = header?.getBoundingClientRect();
-        if (!r) return;
-        openNodeMenu(id, Math.round(r.left + 8), Math.round(r.bottom + 4));
-      } catch {}
+    testWindow.__testOpenCommandPalette = () => setCommandOpen(true);
+    testWindow.__testOpenNodeMenu = (id: string) => {
+      const esc = escapeNodeId(id);
+      const header = document.querySelector(
+        `[data-testid="flow-node-${esc}"] .node-drag-handle`,
+      ) as HTMLElement | null;
+      const r = header?.getBoundingClientRect();
+      if (!r) return;
+      openNodeMenu(id, Math.round(r.left + 8), Math.round(r.bottom + 4));
     };
-    w.__testShowToolbarFor = (id: string) => {
+    testWindow.__testShowToolbarFor = (id: string) => {
       setSelectedSingleId(id);
       setSelectionCount(1);
-      const esc = (window as any).CSS?.escape ? (window as any).CSS.escape(id) : String(id).replace(/([#.:\[\],=])/g, '\\$1');
-      const el = document.querySelector(`[data-testid="flow-node-${esc}"] .node-drag-handle`) as HTMLElement | null;
+      const esc = escapeNodeId(id);
+      const el = document.querySelector(
+        `[data-testid="flow-node-${esc}"] .node-drag-handle`,
+      ) as HTMLElement | null;
       if (el) {
         const r = el.getBoundingClientRect();
         setToolbarPos({ x: Math.round(r.right + 6), y: Math.round(r.top) });
       }
     };
-    w.__testGetExtraIds = () => (Array.isArray((window as any).__extraNodes)
-      ? (window as any).__extraNodes
-      : []);
+    testWindow.__testGetExtraIds = () => testWindow.__extraNodes ?? [];
     return () => {
-      delete w.__testOpenQuickInsert;
-      delete w.__testOpenNodeMenu;
-      delete w.__testShowToolbarFor;
-      delete w.__testGetExtraIds;
-      delete w.__testOpenCommandPalette;
+      delete testWindow.__testOpenQuickInsert;
+      delete testWindow.__testOpenNodeMenu;
+      delete testWindow.__testShowToolbarFor;
+      delete testWindow.__testGetExtraIds;
+      delete testWindow.__testOpenCommandPalette;
     };
   }, [edges, openNodeMenu]);
 
@@ -1278,32 +1562,32 @@ function CanvasPanel({
     (rf as ReactFlowInstance).setNodes(rf.getNodes().filter((n) => !ids.has(n.id)));
   }, [rf, onDeleteNode]);
 
-  useHotkeys(['ctrl+d', 'meta+d'], (e) => {
-    e?.preventDefault();
+  useHotkeys(['ctrl+d', 'meta+d'], (event) => {
+    event?.preventDefault();
     if (!rf) return;
     const selected = rf.getNodes().find((n) => n.selected && n.id.includes('#'));
     if (!selected) return;
     const baseId = selected.id.split('#')[0];
     const pos = selected.position || { x: 240, y: 160 };
     const dup = { x: pos.x + 40, y: pos.y + 40 };
-    (window as unknown as { __testCreateNode?: (id: string, x?: number, y?: number) => void }).__testCreateNode?.(baseId, dup.x, dup.y);
+    getTestWindow()?.__testCreateNode?.(baseId, dup.x, dup.y);
   }, [rf]);
 
   // Test helper no longer needed here (defined at shell scope)
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const w = window as unknown as { __testDeleteFirstExtra?: () => void };
-    w.__testDeleteFirstExtra = () => {
+    const testWindow = getTestWindow();
+    if (!testWindow) return;
+    testWindow.__testDeleteFirstExtra = () => {
       if (!rf) return;
       const all = rf.getNodes();
       const extra = all.find((n) => n.id.includes('#'));
       if (!extra) return;
-      const remainingEdges = rf.getEdges().filter((e) => e.source !== extra.id && e.target !== extra.id);
+      const remainingEdges = rf.getEdges().filter((edge) => edge.source !== extra.id && edge.target !== extra.id);
       rf.setEdges(remainingEdges);
       rf.setNodes(all.filter((n) => n.id !== extra.id));
     };
     return () => {
-      if ('__testDeleteFirstExtra' in w) delete w.__testDeleteFirstExtra;
+      delete testWindow.__testDeleteFirstExtra;
     };
   }, [rf]);
 
@@ -1329,7 +1613,6 @@ function CanvasPanel({
       })
       .catch(() => {});
   }, [dialogOpen]);
-
   const triggerRunPreview = useCallback(async () => {
     setDialogOpen(true);
     setIsRunning(true);
@@ -1350,6 +1633,7 @@ function CanvasPanel({
         const data = (await response.json()) as RunPreviewResponse;
         setRunResult(data);
         setRunHistory((prev) => [data, ...prev.filter((entry) => entry.runId !== data.runId)].slice(0, 5));
+        onRefreshApprovals();
       } else {
         const response = await fetch("/api/run/stream", {
           method: "POST",
@@ -1378,6 +1662,7 @@ function CanvasPanel({
                 const payload = evt.data as RunPreviewResponse;
                 setRunResult(payload);
                 setRunHistory((prev) => [payload, ...prev.filter((entry) => entry.runId !== payload.runId)].slice(0, 5));
+                onRefreshApprovals();
               } else if (evt.type === "error") {
                 setRunError(evt.error ?? "Stream error");
               }
@@ -1392,7 +1677,7 @@ function CanvasPanel({
     } finally {
       setIsRunning(false);
     }
-  }, [promptSpec, streaming]);
+  }, [promptSpec, streaming, onRefreshApprovals]);
 
   return (
     <div className="flex h-full flex-col">
@@ -1494,6 +1779,14 @@ function CanvasPanel({
             <Button variant="outline" size="sm" className="lg:hidden" onClick={onOpenLibrarySheet}>Library</Button>
             <Button variant="outline" size="sm" className="lg:hidden" onClick={onOpenInspectorSheet}>Inspector</Button>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="approvals-button"
+            onClick={onOpenApprovals}
+          >
+            Approvals{pendingApprovalCount ? ` (${pendingApprovalCount})` : ""}
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setHelpOpen(true)}>Help</Button>
           <Button variant="outline" size="sm" onClick={() => {
             // Simple auto-layout on the canvas without mutating parent layout state
@@ -1569,8 +1862,11 @@ function CanvasPanel({
                         });
                         // Use the shell's test hook to create nodes in place
                         // Set positions via events
-                        for (const ex of extras) {
-                          (window as unknown as { __testCreateNode?: (id: string, x?: number, y?: number) => void }).__testCreateNode?.(ex.baseId, ex.pos.x, ex.pos.y);
+                        const testWindow = getTestWindow();
+                        if (testWindow) {
+                          for (const ex of extras) {
+                            testWindow.__testCreateNode?.(ex.baseId, ex.pos.x, ex.pos.y);
+                          }
                         }
                         // Edges cannot be replayed safely here; user can rewire visually after load.
                         setFlowDialogOpen(false);
@@ -1580,8 +1876,8 @@ function CanvasPanel({
                     }}>Load (Append)</Button>
                     <Button variant="secondary" size="sm" onClick={() => {
                       try {
-                        const snap = JSON.parse(importText) as { presetId?: string; extras?: Array<{ id?: string; baseId?: string; position?: { x: number; y: number } }>; edges?: Array<{ source: string; target: string }> };
-                        (window as unknown as { __testReplaceFlow?: (snap: unknown) => void }).__testReplaceFlow?.(snap);
+                        const snap = JSON.parse(importText) as TestFlowImport;
+                        getTestWindow()?.__testReplaceFlow?.(snap);
                         setFlowDialogOpen(false);
                       } catch {
                         alert('Invalid JSON');
@@ -1748,16 +2044,34 @@ function CanvasPanel({
         </div>
       </header>
       <Separator />
-      <div className={cn("relative flex-1", isDraggingBlock && "canvas-drop-active")}
+      <div className="border-b border-border/70 bg-background/80 px-4 py-3">
+        <div className="flex flex-wrap gap-3">
+          {quickSteps.map((step, index) => (
+            <div
+              key={step.title}
+              className="flex min-w-[220px] flex-1 items-start gap-3 rounded-xl border border-border/60 bg-card/80 px-3 py-2 text-muted-foreground"
+            >
+              <Badge variant="secondary">{`0${index + 1}`}</Badge>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">{step.title}</p>
+                <p className="mt-0.5 text-xs">{step.body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div
+        className={cn("relative flex-1", isDraggingBlock && "canvas-drop-active")}
         data-canvas-dropping={isDraggingBlock}
+        ref={flowWrapperRef}
       >
-        {isDraggingBlock ? (
-          <div className="pointer-events-none absolute inset-3 rounded-3xl border-2 border-dashed border-primary/40 bg-primary/5" aria-hidden="true" />
-        ) : null}
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={nodes}
-            edges={useMemo(() => edges.map((e) => ({
+          {isDraggingBlock ? (
+            <div className="pointer-events-none absolute inset-3 rounded-3xl border-2 border-dashed border-primary/40 bg-primary/5" aria-hidden="true" />
+          ) : null}
+          <ReactFlowProvider>
+            <ReactFlow
+              nodes={nodes}
+              edges={useMemo(() => edges.map((e) => ({
               ...e,
               label: e.label ?? inferEdgeLabel(String(e.source)),
               type: 'smart',
@@ -1768,8 +2082,9 @@ function CanvasPanel({
                 onQuickInsert: (id: string) => {
                   const edge = edges.find((x) => x.id === id);
                   if (!edge || !canEditEdge(edge.id)) return;
-                  const lastMouse = (window as any).__lastMousePos as { x: number; y: number } | undefined;
-                  const x = lastMouse?.x ?? 320; const y = lastMouse?.y ?? 180;
+                  const lastMouse = getTestWindow()?.__lastMousePos;
+                  const x = lastMouse?.x ?? 320;
+                  const y = lastMouse?.y ?? 180;
                   setEdgeQuickAdd({ open: true, x, y, id: edge.id, source: edge.source as string, target: edge.target as string });
                 },
               },
@@ -1819,7 +2134,7 @@ function CanvasPanel({
               onDeleteNode,
               onOpenRename: (id: string) => {
                 const node = nodes.find((n) => n.id === id);
-                const curr = (node?.data as any)?.label ?? id;
+                const curr = node?.data?.label ?? id;
                 setRename({ open: true, x: 0, y: 0, id, value: String(curr) });
                 setTimeout(() => { recalcRenameAnchor(id); }, 0);
               },
@@ -1854,14 +2169,33 @@ function CanvasPanel({
             edgeTypes={useMemo(() => ({ smart: SmartEdge }), [])}
             onConnect={(conn) => onConnectEdge(conn)}
             onMove={() => { if (rename.open && rename.id) recalcRenameAnchor(rename.id); }}
+            onNodeDragStart={(_, node) => {
+              setDragGhost({
+                id: node.id,
+                label: (node.data as FlowNodeData | undefined)?.label ?? node.id,
+                category: (node.data as FlowNodeData | undefined)?.category,
+                position: node.position ?? { x: 0, y: 0 },
+              });
+            }}
+            onNodeDrag={(_, node) => {
+              setDragGhost((prev) =>
+                prev && prev.id === node.id
+                  ? { ...prev, position: node.position ?? prev.position }
+                  : prev,
+              );
+            }}
             onNodeDragStop={(_, node) => {
+              setDragGhost(null);
               const pos = node.position ?? { x: 0, y: 0 };
               onMoveNode(node.id, pos);
             }}
             onDragOver={(e) => {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
-              (window as any).__lastMousePos = { x: e.clientX, y: e.clientY };
+              const testWindow = getTestWindow();
+              if (testWindow) {
+                testWindow.__lastMousePos = { x: e.clientX, y: e.clientY };
+              }
             }}
             onDrop={(e) => {
               e.preventDefault();
@@ -1887,6 +2221,31 @@ function CanvasPanel({
             <Controls showInteractive={false} />
           </ReactFlow>
         </ReactFlowProvider>
+        {!hasExtraNodes && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="w-full max-w-xl rounded-2xl border border-dashed border-muted-foreground/50 bg-background/85 p-6 text-center shadow-lg">
+              <p className="text-base font-semibold text-foreground">Welcome to the builder</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Drag a block from the library, connect it to the baseline nodes, then configure it in the inspector.
+              </p>
+              <div className="mt-4 grid gap-3 text-left text-sm text-muted-foreground sm:grid-cols-3">
+                <div>
+                  <p className="font-semibold text-foreground">Drag</p>
+                  <p>Grab a block from the left and hover over the canvas to preview where it will land.</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">Wire</p>
+                  <p>Connect handles to pass structured outputs between nodes.</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">Preview</p>
+                  <p>Fill inputs on the right and hit Run (Preview) to inspect the manifest and approvals.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        </div>
         {menu.open && menu.id ? (
           <div
             className="fixed z-50 w-48 rounded-md border bg-card px-2 py-2 text-sm shadow"
@@ -1909,7 +2268,7 @@ function CanvasPanel({
               onClick={(e) => {
                 e.stopPropagation();
                 const node = nodes.find((n) => n.id === menu.id);
-                const curr = (node?.data as any)?.label ?? menu.id!;
+                const curr = node?.data?.label ?? menu.id!;
                 setRename({ open: true, x: menu.x + 4, y: menu.y + 4, id: menu.id!, value: String(curr) });
                 setTimeout(() => { if (menu.id) recalcRenameAnchor(menu.id); }, 0);
                 setMenu({ open: false, x: 0, y: 0, id: null });
@@ -2017,7 +2376,6 @@ function CanvasPanel({
             </button>
           </div>
         ) : null}
-      </div>
       {selectionCount > 0 ? (
         <div className="pointer-events-auto absolute left-1/2 top-2 z-40 -translate-x-1/2">
           <div className="flex items-center gap-2 rounded-md border bg-card px-2 py-1 text-sm shadow">
@@ -2027,12 +2385,15 @@ function CanvasPanel({
               const selected = rf.getNodes().filter((n) => n.selected);
               // Duplicate each selected node with slight offsets
               let i = 0;
-              for (const n of selected) {
-                const baseId = n.id.includes('#') ? n.id.split('#')[0] : n.id;
-                const pos = n.position || { x: 240, y: 160 };
-                const off = { x: pos.x + 24 + (i * 8), y: pos.y + 24 + (i * 8) };
-                (window as unknown as { __testCreateNode?: (id: string, x?: number, y?: number) => void }).__testCreateNode?.(baseId, off.x, off.y);
-                i += 1;
+              const testWindow = getTestWindow();
+              if (testWindow) {
+                for (const n of selected) {
+                  const baseId = n.id.includes('#') ? n.id.split('#')[0] : n.id;
+                  const pos = n.position || { x: 240, y: 160 };
+                  const off = { x: pos.x + 24 + (i * 8), y: pos.y + 24 + (i * 8) };
+                  testWindow.__testCreateNode?.(baseId, off.x, off.y);
+                  i += 1;
+                }
               }
             }}>Duplicate</Button>
             <Button size="sm" variant="destructive" onClick={() => {
@@ -2081,6 +2442,22 @@ function CanvasPanel({
           <div className="rounded-md border bg-card px-2 py-1 text-xs shadow">Connecting… click a target node</div>
         </div>
       ) : null}
+      {dragGhost && ghostScreenPosition && (
+        <div
+          className="pointer-events-none fixed z-40"
+          style={{ left: ghostScreenPosition.x, top: ghostScreenPosition.y }}
+        >
+          <div className="w-[240px] opacity-80">
+            <CanvasNodeCard
+              id={dragGhost.id}
+              label={dragGhost.label}
+              category={dragGhost.category}
+              ghost
+            />
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">Release to place</p>
+        </div>
+      )}
       {rename.open && rename.id ? (
           <Popover open={rename.open} onOpenChange={(open) => {
             if (!open) setRename({ open: false, x: 0, y: 0, id: null, value: '' });
@@ -2094,7 +2471,7 @@ function CanvasPanel({
           <PopoverContent side="right" align="start" className="p-2" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
               <Input
-                ref={renameRef as any}
+                ref={renameRef}
                 value={rename.value}
                 onChange={(e) => setRename((r) => ({ ...r, value: e.currentTarget.value }))}
                 onKeyDown={(e) => {
@@ -2391,6 +2768,7 @@ function BlockParameters({
 }) {
   const baseId = blockId.split("#")[0];
   const isRagNode = isRagBlock(baseId);
+  const isApprovalNode = isApprovalBlock(baseId);
   const guardEligible =
     !!metadata &&
     (metadata.tags?.includes("citations") ||
@@ -2402,8 +2780,8 @@ function BlockParameters({
       onValueChange(blockId, "guard_requireCitations", true);
     }
   }, [guardEligible, ragConnected, blockId, onValueChange, values?.guard_requireCitations]);
-  const ragSources = Array.isArray(values?.rag_sources)
-    ? (values.rag_sources as Array<{ kind: "file" | "web" | "collection"; ref: string }>)
+  const ragSources: RagSource[] = Array.isArray(values?.rag_sources)
+    ? (values.rag_sources as RagSource[])
     : [...RAG_DEFAULT_PARAMS.rag_sources];
   const ragTopK =
     typeof values?.rag_topK === "number" ? (values.rag_topK as number) : RAG_DEFAULT_PARAMS.rag_topK;
@@ -2427,17 +2805,24 @@ function BlockParameters({
     typeof values?.rag_sampleContext === "string"
       ? (values.rag_sampleContext as string)
       : RAG_DEFAULT_PARAMS.rag_sampleContext;
+  const approvalAssignees = Array.isArray(values?.approval_assignees)
+    ? (values.approval_assignees as string[])
+    : [...APPROVAL_DEFAULT_PARAMS.approval_assignees];
+  const approvalSlaHours =
+    typeof values?.approval_slaHours === "number"
+      ? (values.approval_slaHours as number)
+      : APPROVAL_DEFAULT_PARAMS.approval_slaHours;
+  const approvalAutoApprove =
+    typeof values?.approval_autoApprove === "boolean"
+      ? (values.approval_autoApprove as boolean)
+      : APPROVAL_DEFAULT_PARAMS.approval_autoApprove;
+  const approvalNotes =
+    typeof values?.approval_notes === "string"
+      ? (values.approval_notes as string)
+      : APPROVAL_DEFAULT_PARAMS.approval_notes;
 
-  if (!metadata?.slots || metadata.slots.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        This block does not expose slot parameters yet. Additional configuration will appear here as
-        schemas are added.
-      </div>
-    );
-  }
-
-  const renderingHints = deriveRenderingHints(metadata, blueprint);
+  const hasSlots = Boolean(metadata?.slots && metadata.slots.length > 0);
+  const renderingHints = metadata ? deriveRenderingHints(metadata, blueprint) : [];
 
   return (
     <div className="space-y-4">
@@ -2519,7 +2904,7 @@ function BlockParameters({
                     value={source.kind}
                     onValueChange={(next) => {
                       const nextSources = [...ragSources];
-                      nextSources[index] = { ...nextSources[index], kind: next as any };
+                      nextSources[index] = { ...nextSources[index], kind: next as RagSource["kind"] };
                       onValueChange(blockId, "rag_sources", nextSources);
                     }}
                   >
@@ -2627,6 +3012,78 @@ function BlockParameters({
           </div>
         </div>
       )}
+      {isApprovalNode && (
+        <div className="space-y-3 rounded-lg border border-border bg-amber-50 p-3 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-foreground">Approval settings</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                onValueChange(blockId, "approval_assignees", [...approvalAssignees, ""])
+              }
+            >
+              Add reviewer
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {approvalAssignees.length === 0 && <p>No reviewers yet. Add at least one assignee.</p>}
+            {approvalAssignees.map((assignee, index) => (
+              <div key={`assignee-${index}`} className="flex items-center gap-2">
+                <Input
+                  className="flex-1"
+                  placeholder="name@org.com"
+                  value={assignee}
+                  onChange={(e) => {
+                    const next = [...approvalAssignees];
+                    next[index] = e.currentTarget.value;
+                    onValueChange(blockId, "approval_assignees", next);
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    const next = approvalAssignees.filter((_, i) => i !== index);
+                    onValueChange(blockId, "approval_assignees", next);
+                  }}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <div className="min-w-[120px]">
+              <Label className="text-xs text-foreground">SLA (hours)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={approvalSlaHours}
+                onChange={(e) =>
+                  onValueChange(blockId, "approval_slaHours", Number(e.currentTarget.value))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-foreground">Auto-approve if idle</Label>
+              <Switch
+                checked={approvalAutoApprove}
+                onCheckedChange={(checked) => onValueChange(blockId, "approval_autoApprove", checked)}
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-foreground">Instructions for reviewers</Label>
+            <Textarea
+              rows={3}
+              value={approvalNotes}
+              onChange={(e) => onValueChange(blockId, "approval_notes", e.currentTarget.value)}
+              placeholder="Highlight what approvers should check before allowing the flow to continue."
+            />
+          </div>
+        </div>
+      )}
       {renderingHints.length > 0 && (
         <div className="space-y-2">
           {renderingHints.map((hint) => (
@@ -2639,17 +3096,24 @@ function BlockParameters({
           ))}
         </div>
       )}
-      <div className="space-y-4">
-        {metadata.slots.map((slot) => (
-          <SlotField
-            key={slot.name}
-            slot={slot}
-            value={values?.[slot.name]}
-            onChange={(value) => onValueChange(blockId, slot.name, value)}
-            blueprint={blueprint}
-          />
-        ))}
-      </div>
+      {hasSlots ? (
+        <div className="space-y-4">
+          {metadata?.slots?.map((slot) => (
+            <SlotField
+              key={slot.name}
+              slot={slot}
+              value={values?.[slot.name]}
+              onChange={(value) => onValueChange(blockId, slot.name, value)}
+              blueprint={blueprint}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+          This block does not expose slot parameters yet. Additional configuration will appear here as
+          schemas are added.
+        </div>
+      )}
     </div>
   );
 }
@@ -2980,6 +3444,12 @@ function buildInitialNodeParams(
       result[nodeId] = {
         ...(result[nodeId] ?? {}),
         ...RAG_DEFAULT_PARAMS,
+      };
+    }
+    if (isApprovalBlock(nodeId)) {
+      result[nodeId] = {
+        ...(result[nodeId] ?? {}),
+        ...APPROVAL_DEFAULT_PARAMS,
       };
     }
   }

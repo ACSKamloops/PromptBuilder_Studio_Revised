@@ -8,6 +8,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Copy, Pencil, Trash2, MoreVertical } from "lucide-react";
 
+const statusStyles: Record<
+  NonNullable<CanvasNodeCardProps["status"]>,
+  { label: string; className: string }
+> = {
+  idle: { label: "Idle", className: "bg-white/15 text-white/80" },
+  running: { label: "Running", className: "bg-amber-100/90 text-amber-900" },
+  completed: { label: "Done", className: "bg-emerald-100 text-emerald-800" },
+  failed: { label: "Failed", className: "bg-rose-100 text-rose-700" },
+};
+
 export interface CanvasNodeCardProps {
   id: string;
   label: string;
@@ -47,6 +57,7 @@ export function CanvasNodeCard({
   const Icon = theme.icon;
   const baseId = id.includes('#') ? id.split('#')[0] : id;
   const instance = id.includes('#') ? 'extra' : 'preset';
+  const statusBadge = statusStyles[status] ?? statusStyles.idle;
 
   return (
     <motion.article
@@ -153,7 +164,19 @@ export function CanvasNodeCard({
             <span className="h-2 w-2 rounded-full" style={{ background: theme.dot }} aria-hidden="true" />
             <span className="uppercase tracking-wide">{category ?? "Node"}</span>
           </div>
-          <span className="font-mono text-[10px] text-muted-foreground/70">{baseId}</span>
+          <div className="flex items-center gap-2">
+            {status !== "idle" ? (
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                  statusBadge.className,
+                )}
+              >
+                {statusBadge.label}
+              </span>
+            ) : null}
+            <span className="font-mono text-[10px] text-muted-foreground/70">{baseId}</span>
+          </div>
         </div>
       </div>
     </motion.article>

@@ -1,6 +1,7 @@
 import type { PromptSpec } from "@/lib/promptspec";
 import { executeLangGraph } from "@/lib/runtime/langgraph-runner";
 import { LlmProvider, ProviderRunResult, RunStreamEvent, TokenUsage } from "./types";
+import { enqueueApprovals } from "@/server/approval-inbox";
 
 function estimateUsage(spec: PromptSpec): TokenUsage {
   const promptChars = JSON.stringify(spec.nodes).length + JSON.stringify(spec.edges).length;
@@ -25,7 +26,7 @@ export class MockProvider implements LlmProvider {
     const latencyMs = completedAt.getTime() - startedAt.getTime();
     const costUsd = usage.totalTokens * 0.000002; // stub pricing
 
-    return {
+    const runResult: ProviderRunResult = {
       runId: graphResult.runId,
       startedAt: graphResult.receivedAt,
       completedAt: completedAt.toISOString(),
@@ -35,6 +36,8 @@ export class MockProvider implements LlmProvider {
       manifest: graphResult.manifest,
       message: graphResult.message,
     };
+    enqueueApprovals(spec, runResult);
+    return runResult;
   }
 
   async *stream(spec: PromptSpec): AsyncGenerator<RunStreamEvent> {
@@ -50,4 +53,3 @@ export class MockProvider implements LlmProvider {
     yield { type: "run_completed", data: result };
   }
 }
-

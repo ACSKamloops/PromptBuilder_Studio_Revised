@@ -1,65 +1,64 @@
 # Prompt Studio (Zapier‑class Prompt Builder)
 
-Modern, Zapier‑like workflow studio for prompts: drag‑and‑drop blocks (RAG, CoT/ToT/GoT, CoV, RSIP, Transcribe→Analyze, HITL) with typed inputs/outputs, persistent runs, and streaming previews. It encodes Prompt‑Science defaults—ground → reason → verify—so outcomes are citable, reproducible, and auditable.
+Prompt Studio is a Zapier/Make‑style workflow canvas that encodes Prompt‑Science defaults—**ground → reason → verify**—instead of ad‑hoc chat prompts. Blocks such as RAG, CoT/ToT/GoT, CoV, RSIP, Transcribe→Analyze, Hybrid Reasoning, SPOC, and HITL Approval Gates expose typed inputs/outputs, live inspectors, and run previews so every flow is citable, reproducible, and auditable.
 
-## Vision
-- Build a visual playground where practitioners learn prompt strategy by exploring modular templates.
-- Offer workflow scaffolding for chaining prompts into reusable playbooks.
-- Surface reproducibility guardrails (schemas, evaluation rubrics) alongside creative tooling.
+The canonical product spec lives in `docs/Instructions for Prompt.md`. All docs, tests, and UI updates must stay in lockstep with that spec.
 
-## Library at a Glance
-- `prompts/*.yaml` — 24 battle-tested templates (CoT, ToT, GoT, RAG, RSIP, CoV, SPOC, Charts-of-Thought, SoAL, Tables, Caption-Assisted, CAD, MPS, CHI, and more).
-- `compositions/*.yaml` — 4 composable pipelines that chain complementary templates (Deep Research, Long-Form Writing, Data Review, Strategic Planning).
-- `schemas/prompt_template.schema.json` — JSON schema describing the slot/metadata contract.
-- `ui/ui.blueprint.json` — initial mapping of slot types to UI controls and hints for renderers (moving to generated blueprint from schemas).
-- `reproducibility/*` — protocol and rubric for evaluating prompt behavior over time.
+## Product Pillars
+- **Information architecture like Zapier/Make.** Block library (triggers, LLM, control, data, HITL, tools, memory, advanced), central canvas with snap grid + React Flow, inspector tabs (Inputs, Params, Validation, Guardrails, Preview, Cost), and a streaming run console.
+- **Prompt‑Science governance.** RAG treated as provenance control (citations auto‑lock), structure‑first multimodal analysis (Tables/Charts of Thought), verification nodes (CoV strict/annotate, RSIP, SPOC), Hybrid Reasoning switch, and Approval Gate tasks.
+- **Typed everything.** Block schemas live in Zod, UI blueprint is generated, slot detection renders form controls, mapping DSL is deterministic, and PromptSpec export includes params/edges for replay.
+- **Observability.** Streaming SSE (`run_started → node_started → token → node_completed → run_completed`), run ledger (tokens/latency/cost/citations), replay-from-node, and immutable approval decisions.
 
-## Working with the Data
-1. Parse a `prompts/*.yaml` file to render its `slots` as form inputs.
-2. Interpolate `{{placeholders}}` in `prompt` with user-supplied slot values before calling a model.
-3. Respect `model_preferences` to keep system prompts, default models, and params aligned.
-4. Use `combines_with` to suggest follow-up templates or to chain prompts in compositions.
+## Repo Layout
+- `studio/` — Next.js 16 App Router client with React Flow canvas, DnD Kit library, shadcn/ui components, provider layer, approval inbox, run ledger, and Playwright/Vitest suites.
+- `prompts/*.yaml` — Guardrailed agents (CoT, ToT, GoT, RAG, RSIP, CoV, SPOC cue, Tables, Charts, Caption assisted, provenance enforcement, etc.).
+- `compositions/*.yaml` — Reference flows (Deep Research, Strategic Planning, Data Review, Long Form writing).
+- `schemas/` — JSON/Zod schemas describing prompt templates, block params, and composition graphs.
+- `ui/ui.blueprint.json` & `studio/src/config/uiBlueprint.json` — Generated slot → control hints (driven by schemas via `npm run gen:blueprint`).
+- `docs/Instructions for Prompt.md` — Master Zapier‑class spec.
+- `AGENTS.md` — Live catalog of blocks/agents derived from prompts + built‑ins.
+- `reproducibility/` — Protocol + manifests for Prompt‑Science evaluations.
 
-## Educational Angle
-- Each template encodes **when to use**, **failure modes**, and **acceptance criteria** to encourage disciplined prompt trials.
-- Compositions illustrate how to hand off outputs between agents and where to add verification loops.
-- The UI layer will emphasize explanatory copy, onboarding walkthroughs, and example-driven defaults.
+## Run It Locally
+```bash
+cd prompt-builder/studio
+npm install
+npx playwright install --with-deps   # one time
+npm run dev
+```
 
-## Roadmap Themes
-1. **Interactive Canvas** — React + modern drag-and-drop primitives (e.g. DnD Kit) for laying out prompt nodes, slot forms, and model execution panels.
-2. **Reusable Agents** — Persist prompt instances with filled slots, link them into flows, and export/share configurations.
-3. **Learning Mode** — Inline tutorials, guided labs, and reflection checklists tied to the reproducibility rubric.
-4. **Verification Tooling** — Visual diffing of outputs, acceptance-criteria tracking, and structured logging hooks.
+Visit `http://127.0.0.1:3000` (or your chosen local domain) to interact with the studio. The Deep Research preset loads first; use the flow picker to switch compositions. For production preview run `npm run build && npm run start`.
 
-## Development Workspace
-- `studio/` — Next.js + React Flow editor. From `studio/`: `npm ci && npm run dev`.
-- Install Playwright with `npx playwright install --with-deps` once; E2E via `npm run test:e2e`.
-- Generate the UI blueprint from typed schemas with `npm run gen:blueprint` (auto-runs on dev/build/test).
-- Unit tests `npm run test:unit`, schema checks `npm run validate:prompts`, typecheck `npm run typecheck`.
-- The Studio supports: YAML‑driven block metadata, slot forms, prompt previews, PromptSpec export, snapping canvas, run preview (stubbed), context menus, and a Coach panel that reads `when_to_use`, `failure_modes`, and composition steps.
-- Shared assets live at repo root (`prompts/`, `compositions/`, `schemas/`). See `AGENTS.md` and `docs/Instructions for Prompt.md` for the Master Build Spec and block catalog.
+## Key Capabilities
+- React Flow canvas with snap/grid persistence, multi-select delete, edge inspectors, node context menu, rename overlay, and drag overlay showing real cards.
+- Slot inspector that reads YAML, generates controls, renders prompt preview (Handlebars + mapping DSL), enforces guardrails (citations lock when RAG upstream, refusal policy selector, approval defaults).
+- Mapping expression DSL (`coalesce`, `join`, `upper/lower`, `pick`, `sum`, `formatDate`, etc.) shared between data pills and conditional sections.
+- Provider layer with SSE run preview (mock adapter today), run ledger UI, cost/tokens tracking, and Approval inbox (`/api/approvals`) fed by `approval-gate` nodes.
+- Test hooks (`window.__testCreateNode`, `__testReplaceFlow`, `__testOpenCommandPalette`, etc.) for deterministic Playwright flows.
 
-## Mapping Mini-Language
-Placeholders now support a safe helper DSL for data pills:
+## Quality Gates & Scripts
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Next.js dev server with live React Flow canvas. |
+| `npm run build && npm run start` | Production bundle + start for local hosting. |
+| `npm run lint` | ESLint + TypeScript rules. |
+| `npm run typecheck` | `tsc --noEmit` for both shared schemas and studio. |
+| `npm run test:unit` | Vitest suite (mapping DSL, coach panel, helpers). |
+| `npm run test:e2e` | Playwright regression: DnD, inspector forms, run preview, approvals, accessibility. |
+| `npm run validate:prompts` | Zod/YAML validation for prompts + compositions. |
+| `npm run gen:blueprint` | Rebuild UI blueprint from schemas (auto-run in dev/build/test). |
 
-| Helper | Example | Description |
-| --- | --- | --- |
-| `coalesce(a,b,…)` | `{{coalesce(prev.summary, user.topic)}}` | first non-empty value |
-| `join(list, sep)` | `{{join(results, ", ")}}` | join arrays |
-| `upper(x)` / `lower(x)` | `{{upper(user.region)}}` | change casing |
-| `pick(obj, "path.to.key")` | `{{pick(context, "sources.0.title")}}` | dot-path lookup |
-| `sum(list)` | `{{sum(tokens)}}` | sum numeric arrays |
-| `formatDate(value, "date|time|iso")` | `{{formatDate(run.startedAt, "date")}}` | format timestamps |
+Always run `npm run typecheck`, `npm run lint`, `npm run validate:prompts`, and the relevant tests before pushing.
 
-Conditionals (`{{#if …}}`) evaluate the same expressions, so you can gate sections with `{{#if coalesce(a,b)}}…{{/if}}`.
-
-## Governance Guardrails
-- Prompt nodes tagged with `citations` automatically force “Require citations” when upstream RAG/GraphRAG nodes feed them; the inspector shows the lock + refusal-policy control.
-- Refusal policy selector (`off`, `regulated-only`, `always`) lives in the inspector guardrail card so flows stay compliant without ad‑hoc coding.
+## Documentation Map
+- `docs/Instructions for Prompt.md` — Master build spec (IA, block catalog, schemas, guardrails, roadmap).
+- `AGENTS.md` — Up-to-date agent/block catalog (paths, IO, guardrails).
+- `reproducibility/reproducibility_protocol.md` — Prompt‑Science runbook for grounding, structure, verification, approvals, and acceptance gates.
+- `studio/README.md` — App-specific dev guide (scripts, testing focus, known issues).
 
 ## Contributing
-Contributions that strengthen typed schemas (Zod), provider adapters, streaming run previews, mapping DSL, and reproducibility utilities are welcome. Please open small PRs and include tests.
-
----
-
-**Note:** The prompt assets remain model-agnostic. Adjust `system` instructions and params per target model/version as you integrate into the UI.
+- Keep code and docs aligned with the master spec; update `AGENTS.md` + README + reproducibility notes when adding/changing blocks.
+- Include schema + prompt validation updates (`npm run validate:prompts`) and relevant tests (unit + Playwright for UX changes).
+- Prefer typed adapters, deterministic DSL helpers, and observable run logs over ad-hoc logic.
+- Document HITL/approval behavior when flows add or modify Approval Gate nodes so the governance story remains clear.

@@ -1,10 +1,17 @@
 import { test, expect } from '@playwright/test';
+import type { StudioTestWindow } from './test-window';
 
 test.describe('Keyboard actions', () => {
   test('Ctrl/Cmd+D duplicates a selected extra node', async ({ page }) => {
     await page.goto('/');
-    await page.waitForFunction(() => typeof (window as any).__testCreateNode === 'function');
-    await page.evaluate(() => (window as any).__testCreateNode('rag-retriever', 260, 160));
+    await page.waitForFunction(() => {
+      const w = window as StudioTestWindow;
+      return typeof w.__testCreateNode === 'function';
+    });
+    await page.evaluate(() => {
+      const w = window as StudioTestWindow;
+      w.__testCreateNode?.('rag-retriever', 260, 160);
+    });
 
     const nodes = page.locator('[data-node-instance="extra"]');
     await expect(nodes.first()).toBeVisible();
@@ -17,7 +24,10 @@ test.describe('Keyboard actions', () => {
     let afterDup = await nodes.count();
     if (afterDup <= beforeDup) {
       // Fallback for environments where the browser intercepts Ctrl/Meta+D
-      await page.evaluate(() => (window as any).__testCreateNode?.('rag-retriever', 320, 200));
+      await page.evaluate(() => {
+        const w = window as StudioTestWindow;
+        w.__testCreateNode?.('rag-retriever', 320, 200);
+      });
       await page.waitForTimeout(50);
       afterDup = await nodes.count();
     }

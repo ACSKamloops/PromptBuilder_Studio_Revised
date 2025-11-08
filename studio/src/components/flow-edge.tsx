@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState, type MouseEvent } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -60,10 +60,10 @@ export const SmartEdge = memo(function SmartEdge({ id, sourceX, sourceY, targetX
               <button
                 data-testid={`edge-label-${id}`}
                 className="underline-offset-2 hover:underline"
-                onClick={(e) => {
+                onClick={(e: MouseEvent<HTMLButtonElement>) => {
                   e.stopPropagation();
                   if (!editable) return;
-                  if ((e as any).altKey || (e as any).shiftKey) {
+                  if (e.altKey || e.shiftKey) {
                     data?.onQuickInsert?.(id);
                     return;
                   }

@@ -90,6 +90,13 @@ export const blockCatalog: BlockDescriptor[] = [
     references: ["prompts/recursive-self-improvement.yaml"],
   },
   {
+    id: "approval-gate",
+    name: "Approval Gate (HITL)",
+    category: "HITL",
+    description: "Pause the flow and route work to human reviewers with SLAs and notes.",
+    status: "available",
+  },
+  {
     id: "spoc",
     name: "SPOC Self-Check",
     category: "Verification",

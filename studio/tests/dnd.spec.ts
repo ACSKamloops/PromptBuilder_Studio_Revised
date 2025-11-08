@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
+import type { StudioTestWindow } from './test-window';
 
 async function simulateHtml5Dnd(page: Page, sourceTestId: string, canvasSelector = '.react-flow__pane') {
   await page.waitForSelector(`[data-testid="${sourceTestId}"]`);
@@ -51,11 +52,14 @@ test.describe('Drag-and-drop library → canvas', () => {
     await page.waitForTimeout(200);
     let extraAfter = await page.locator('[data-node-instance="extra"]').count();
     if (extraAfter <= extraBefore) {
-    await page.waitForFunction(() => typeof (window as unknown as { __testCreateNode?: ((id: string, x?: number, y?: number) => void) }).__testCreateNode === 'function');
-    await page.evaluate(() => {
-      const w = window as unknown as { __testCreateNode?: (id: string, x?: number, y?: number) => void };
-      w.__testCreateNode?.('rag-retriever', 260, 180);
-    });
+      await page.waitForFunction(() => {
+        const w = window as StudioTestWindow;
+        return typeof w.__testCreateNode === 'function';
+      });
+      await page.evaluate(() => {
+        const w = window as StudioTestWindow;
+        w.__testCreateNode?.('rag-retriever', 260, 180);
+      });
       await page.waitForTimeout(100);
       extraAfter = await page.locator('[data-node-instance="extra"]').count();
     }

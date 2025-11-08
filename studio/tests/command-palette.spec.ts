@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { StudioTestWindow } from './test-window';
 
 test.describe('Global command palette', () => {
   test('add block and switch flow via palette', async ({ page }) => {
@@ -6,8 +7,14 @@ test.describe('Global command palette', () => {
 
     // Open palette and add RAG Retriever
     const openPalette = async () => {
-      await page.waitForFunction(() => typeof (window as any).__testOpenCommandPalette === 'function');
-      await page.evaluate(() => (window as any).__testOpenCommandPalette?.());
+      await page.waitForFunction(() => {
+        const w = window as StudioTestWindow;
+        return typeof w.__testOpenCommandPalette === 'function';
+      });
+      await page.evaluate(() => {
+        const w = window as StudioTestWindow;
+        w.__testOpenCommandPalette?.();
+      });
       const input = page.getByTestId('command-palette-input');
       await input.waitFor({ state: 'visible' });
       return input;

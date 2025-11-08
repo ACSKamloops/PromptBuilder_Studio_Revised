@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -20,21 +20,23 @@ export function OnboardingDialog({
   openFromHelp?: boolean;
   onClose?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const dismissed = window.localStorage.getItem(STORAGE_KEY) === "1";
-    const isAutomation = (navigator as any).webdriver === true;
-    if (!dismissed && !openFromHelp && !isAutomation) setOpen(true);
-  }, [openFromHelp]);
-
-  useEffect(() => {
-    if (openFromHelp) setOpen(true);
-  }, [openFromHelp]);
+  const [userClosed, setUserClosed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(STORAGE_KEY) === "1";
+  });
+  const isAutomation = useMemo(() => {
+    if (typeof navigator === "undefined") return false;
+    return Boolean(
+      (navigator as Navigator & { webdriver?: boolean | undefined }).webdriver,
+    );
+  }, []);
+  const dialogOpen = Boolean(
+    openFromHelp || (!dismissed && !isAutomation && !userClosed),
+  );
 
   const handleClose = () => {
-    setOpen(false);
+    setUserClosed(true);
     onClose?.();
   };
 
@@ -42,11 +44,13 @@ export function OnboardingDialog({
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_KEY, "1");
     }
+    setDismissed(true);
+    setUserClosed(true);
     handleClose();
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => (!v ? handleClose() : setOpen(v))}>
+    <Dialog open={dialogOpen} onOpenChange={(next) => (!next ? handleClose() : null)}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Welcome to Prompt Builder Studio</DialogTitle>
