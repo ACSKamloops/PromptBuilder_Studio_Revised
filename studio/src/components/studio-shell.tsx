@@ -1045,47 +1045,72 @@ useEffect(() => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm">
-            {approvals.length === 0 ? (
-              <p className="text-muted-foreground">No approval tasks yet.</p>
-            ) : (
-              approvals.map((task) => (
-                <div
-                  key={task.id}
-                  className="rounded-lg border border-border bg-card/60 p-3 shadow-sm"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{task.label}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Run {task.runId} · Node {task.nodeId}
-                      </p>
-                    </div>
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[11px] uppercase tracking-wide",
-                        task.status === "pending"
-                          ? "bg-amber-100 text-amber-700"
-                          : task.status === "approved"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-red-100 text-red-700",
-                      )}
-                    >
-                      {task.status}
-                    </span>
-                  </div>
-                  {task.assignees.length > 0 && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Assignees: {task.assignees.join(", ")}
-                    </p>
-                  )}
-                  {task.notes && (
-                    <p className="mt-2 text-xs text-muted-foreground">Instructions: {task.notes}</p>
-                  )}
-                  {task.decision && task.status !== "pending" && (
-                    <p className="mt-2 text-xs text-muted-foreground">Decision: {task.decision}</p>
-                  )}
-                  <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                    <span>
+                  {approvals.length === 0 ? (
+                    <p className="text-muted-foreground">No approval tasks yet.</p>
+                  ) : (
+                    approvals.map((task) => (
+                      <div
+                        key={task.id}
+                        className="rounded-lg border border-border bg-card/60 p-3 shadow-sm"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">{task.label}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Run {task.runId} · Node {task.nodeId}
+                            </p>
+                          </div>
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-[11px] uppercase tracking-wide",
+                              task.status === "pending"
+                                ? "bg-amber-100 text-amber-700"
+                                : task.status === "approved"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-red-100 text-red-700",
+                            )}
+                          >
+                            {task.status}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          <p>
+                            Panel confidence {(task.aggregateConfidence * 100).toFixed(1)}%
+                            {task.escalated ? " · Escalated" : " · Auto-approved"}
+                          </p>
+                          <p>{task.evaluationSummary}</p>
+                          {task.escalationReason && (
+                            <p className="italic">Reason: {task.escalationReason}</p>
+                          )}
+                        </div>
+                        {task.assignees.length > 0 && (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Assignees: {task.assignees.join(", ")}
+                          </p>
+                        )}
+                        {task.notes && (
+                          <p className="mt-2 text-xs text-muted-foreground">Instructions: {task.notes}</p>
+                        )}
+                        {task.judges.length > 0 && (
+                          <div className="mt-2 rounded border border-border/50 bg-muted/30 p-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Judge verdicts
+                            </p>
+                            <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                              {task.judges.map((judge) => (
+                                <li key={`${task.id}-${judge.agentId}`}>
+                                  <span className="font-semibold text-foreground/80">{judge.name}</span>: {judge.verdict}
+                                  {` · ${(judge.confidence * 100).toFixed(1)}%`} · {judge.rationale}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {task.decision && task.status !== "pending" && (
+                          <p className="mt-2 text-xs text-muted-foreground">Decision: {task.decision}</p>
+                        )}
+                        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                          <span>
                       Submitted {new Date(task.submittedAt).toLocaleString()}
                       {typeof task.slaHours === "number" && task.slaHours > 0
                         ? ` · SLA ${task.slaHours}h`
@@ -1973,68 +1998,95 @@ function CanvasPanel({
                       <p className="text-muted-foreground break-all">{runResult.runId}</p>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      <div>
-                        <p className="font-medium">Summary</p>
-                        <p className="text-muted-foreground">
-                          Blocks {runResult.manifest.blocks.length} · Nodes {runResult.manifest.nodeCount} · Edges {runResult.manifest.edgeCount}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="font-medium">Usage</p>
-                        <p className="text-muted-foreground">
-                          {runResult.usage.promptTokens} prompt · {runResult.usage.completionTokens} completion · total {runResult.usage.totalTokens} tokens
-                        </p>
-                        <p className="text-muted-foreground">${runResult.costUsd.toFixed(4)} · {runResult.latencyMs} ms</p>
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{runResult.message}</p>
+                  <div>
+                    <p className="font-medium">Summary</p>
+                    <p className="text-muted-foreground">
+                      Blocks {runResult.manifest.blocks.length} · Nodes {runResult.manifest.nodeCount} · Edges {runResult.manifest.edgeCount}
+                    </p>
                   </div>
-                  <div className="space-y-2">
-                    {runResult.manifest.blocks.map((block) => (
-                      <div
-                        key={block.id}
-                        className="rounded-lg border border-border bg-card p-3 text-xs leading-relaxed space-y-1"
-                      >
+                  <div>
+                    <p className="font-medium">Usage</p>
+                    <p className="text-muted-foreground">
+                      {runResult.usage.promptTokens} prompt · {runResult.usage.completionTokens} completion · total {runResult.usage.totalTokens} tokens
+                    </p>
+                    <p className="text-muted-foreground">${runResult.costUsd.toFixed(4)} · {runResult.latencyMs} ms</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="font-medium">Benchmarks</p>
+                    <p className="text-muted-foreground">
+                      SSR {(runResult.benchmarks.ssr.ratio * 100).toFixed(1)}% ({runResult.benchmarks.ssr.completed}/{runResult.benchmarks.ssr.planned}) · Verification {(runResult.benchmarks.verificationEfficacy.ratio * 100).toFixed(1)}% ({runResult.benchmarks.verificationEfficacy.completed}/{runResult.benchmarks.verificationEfficacy.planned})
+                    </p>
+                    {runResult.benchmarks.notes?.length ? (
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                        {runResult.benchmarks.notes.map((note) => (
+                          <li key={note}>{note}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">{runResult.message}</p>
+              </div>
+              <div className="space-y-2">
+                {runResult.manifest.blocks.map((block) => {
+                  const artifact = block.artifact;
+                  const governance = block.governance;
+                  return (
+                    <div
+                      key={block.id}
+                      className="rounded-lg border border-border bg-card p-3 text-xs leading-relaxed space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-semibold">{block.block}</p>
-                        <p className="text-muted-foreground">
-                          Output: {block.output.note ?? "No output"}
-                        </p>
-                        {block.output.guidance && (
-                          <p className="text-muted-foreground">
-                            Guidance: {block.output.guidance}
-                          </p>
-                        )}
-                        {block.output.failureModes && (
-                          <p className="text-muted-foreground">
-                            Failure modes: {block.output.failureModes}
-                          </p>
-                        )}
-                        {block.output.acceptanceCriteria && (
-                          <p className="text-muted-foreground">
-                            Acceptance criteria: {block.output.acceptanceCriteria}
-                          </p>
-                        )}
-                        {Array.isArray(block.output.combinesWith) &&
-                          block.output.combinesWith.length > 0 && (
-                            <p className="text-muted-foreground">
-                              Combines with: {block.output.combinesWith.join(", ")}
-                            </p>
-                          )}
-                        {Array.isArray(block.output.compositionSteps) &&
-                          block.output.compositionSteps.length > 0 && (
-                            <p className="text-muted-foreground">
-                              Composition steps: {block.output.compositionSteps.join(" → ")}
-                            </p>
-                          )}
-                        {block.output.paramsUsed &&
-                          Object.keys(block.output.paramsUsed).length > 0 && (
-                            <p className="text-muted-foreground">
-                              Params provided: {Object.keys(block.output.paramsUsed).join(", ")}
-                            </p>
-                          )}
+                        <span className="text-muted-foreground text-[11px]">
+                          {(artifact.metrics.confidence * 100).toFixed(1)}% confidence · {artifact.metrics.latencyMs} ms
+                        </span>
                       </div>
-                    ))}
-                  </div>
+                      <p className="text-muted-foreground">
+                        {artifact.outputs.summary ?? artifact.logs?.[0] ?? "Execution complete."}
+                      </p>
+                      <div className="grid gap-1 sm:grid-cols-2">
+                        <p className="text-muted-foreground">
+                          Tokens {artifact.metrics.tokens.prompt} prompt · {artifact.metrics.tokens.completion} completion
+                        </p>
+                        {artifact.renderedPrompt && (
+                          <p className="text-muted-foreground">Prompt template: {artifact.promptPath ?? "inline"}</p>
+                        )}
+                      </div>
+                      {governance && (
+                        <div className="grid gap-1 text-muted-foreground">
+                          {governance.guidance && <p>Guidance: {governance.guidance}</p>}
+                          {governance.failureModes && <p>Failure modes: {governance.failureModes}</p>}
+                          {governance.acceptanceCriteria && <p>Acceptance criteria: {governance.acceptanceCriteria}</p>}
+                          {Array.isArray(governance.combinesWith) && governance.combinesWith.length > 0 && (
+                            <p>Combines with: {governance.combinesWith.join(", ")}</p>
+                          )}
+                        </div>
+                      )}
+                      {Array.isArray(artifact.attachments) && artifact.attachments.length > 0 && (
+                        <div className="rounded border border-border/60 bg-muted/30 p-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Attachments
+                          </p>
+                          <ul className="mt-1 space-y-1 text-muted-foreground">
+                            {artifact.attachments.map((attachment) => (
+                              <li key={`${block.id}-${attachment.label}`}>{attachment.label}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <details className="rounded border border-border/50 bg-muted/20 p-2">
+                        <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Inspect artefact payload
+                        </summary>
+                        <pre className="mt-2 max-h-60 overflow-auto rounded bg-background/60 p-2 text-[11px] leading-relaxed text-muted-foreground">
+                          {JSON.stringify({ inputs: artifact.inputs, outputs: artifact.outputs, logs: artifact.logs }, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  );
+                })}
+              </div>
                   <pre className="max-h-64 overflow-auto rounded bg-muted p-3 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap font-mono" data-testid="prompt-preview">
                     {JSON.stringify(runResult, null, 2)}
                   </pre>

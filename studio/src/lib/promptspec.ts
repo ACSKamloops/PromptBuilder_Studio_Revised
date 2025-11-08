@@ -22,6 +22,7 @@ export interface PromptSpec {
     id: string;
     name: string;
     description: string;
+    sourcePath?: string;
   };
   nodes: PromptSpecNode[];
   edges: PromptSpecEdge[];
@@ -62,6 +63,7 @@ export function buildPromptSpec(
       id: preset.id,
       name: preset.name,
       description: preset.description,
+      sourcePath: preset.sourcePath,
     },
     nodes,
     edges,

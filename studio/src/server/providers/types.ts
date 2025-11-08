@@ -1,27 +1,15 @@
 import type { PromptSpec } from "@/lib/promptspec";
-import type { LangGraphRunResult } from "@/lib/runtime/langgraph-runner";
+import type { NodeArtifact } from "@/lib/runtime/langgraph-runner";
+import type { RunRecord, TokenUsage } from "@/types/run";
 
-export interface TokenUsage {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-}
+export type { TokenUsage };
 
-export interface ProviderRunResult {
-  runId: string;
-  startedAt: string;
-  completedAt: string;
-  latencyMs: number;
-  costUsd: number;
-  usage: TokenUsage;
-  manifest: LangGraphRunResult["manifest"];
-  message: string;
-}
+export type ProviderRunResult = RunRecord;
 
 export type RunStreamEvent =
   | { type: "run_started"; data: { nodeCount: number; edgeCount: number } }
   | { type: "node_started"; data: { id: string; label: string; index: number } }
-  | { type: "node_completed"; data: { id: string; ok: boolean } }
+  | { type: "node_completed"; data: { id: string; ok: boolean; artifact?: NodeArtifact } }
   | { type: "token"; data: { nodeId: string; token: string } }
   | { type: "log"; data: { level: "info" | "warn" | "error"; message: string } }
   | { type: "run_completed"; data: ProviderRunResult }

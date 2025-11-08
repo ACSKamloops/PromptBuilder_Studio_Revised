@@ -52,7 +52,11 @@ test.describe('Studio flow interactions', () => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Run (Preview)' }).click();
     // In headless CI, match on stable message + output lines
-    await expect(page.locator('text=Executed via LangGraph runnable stub').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Output: Stubbed execution for System Mandate')).toBeVisible();
+    await expect(
+      page.locator('text=LangGraph execution completed with sandboxed node artefacts').first(),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByText('Generated artefact for System Mandate', { exact: false }),
+    ).toBeVisible();
   });
 });

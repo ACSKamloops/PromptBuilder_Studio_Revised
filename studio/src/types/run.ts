@@ -1,4 +1,9 @@
-import type { LangGraphRunBlock } from "@/lib/runtime/langgraph-runner";
+import type {
+  BenchmarkSuite,
+  CompositionSnapshot,
+  LangGraphRunBlock,
+  NodeArtifact,
+} from "@/lib/runtime/langgraph-runner";
 import type { PromptSpec } from "@/lib/promptspec";
 
 export interface TokenUsage {
@@ -12,6 +17,8 @@ export interface RunManifest {
   nodeCount: number;
   edgeCount: number;
   blocks: LangGraphRunBlock[];
+  artifacts: Record<string, NodeArtifact>;
+  composition?: CompositionSnapshot;
 }
 
 export interface RunRecord {
@@ -22,6 +29,8 @@ export interface RunRecord {
   costUsd: number;
   usage: TokenUsage;
   manifest: RunManifest;
+  benchmarks: BenchmarkSuite;
+  logs: string[];
   message: string;
 }
 
