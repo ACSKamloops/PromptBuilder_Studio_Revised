@@ -25,6 +25,14 @@ jobs:
         working-directory: prompt-builder/studio
         run: npm ci
 
+      - name: Typecheck
+        working-directory: prompt-builder/studio
+        run: npm run typecheck
+
+      - name: Validate prompts
+        working-directory: prompt-builder/studio
+        run: npm run validate:prompts
+
       - name: Unit tests
         working-directory: prompt-builder/studio
         run: npm run test:unit
@@ -40,4 +48,3 @@ jobs:
       - name: E2E tests
         working-directory: prompt-builder/studio
         run: npm run test:e2e -- --reporter=line
-

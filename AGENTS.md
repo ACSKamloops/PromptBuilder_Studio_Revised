@@ -1,106 +1,87 @@
-# Prompt Agents Catalog
+# Prompt Studio Agents Catalog (Zapier‑class)
 
-This catalog helps you navigate the reusable “agents” that power the Prompt Builder. Each agent is a structured prompt template with defined slots, model defaults, and guardrails for use in the visual editor or programmatic pipelines. Use it as a reference when teaching prompt strategy, assembling new workflows, and wiring research-backed combinations into the drag-and-drop studio. In the UI, these agents surface inside a polished React Flow canvas, shadcn/ui panel system, and command palette so they feel modern and approachable.
+This catalog is the single source of truth for reusable “agents” (blocks) that power the Studio. Each agent is a typed, documented node with schema‑driven inputs/params/outputs and guardrails aligned with Prompt‑Science pillars: ground → reason → verify.
+
+For the master product spec, see: `docs/Instructions for Prompt.md`.
 
 ## How to Read
-- **Path** — Location of the YAML asset.
-- **Focus** — Core skill the agent reinforces inside the learning experience.
-- **Highlights** — What makes the agent distinct or how it complements others.
+- **Path** — YAML asset backing the agent.
+- **Purpose** — What the agent is for; governance notes if applicable.
+- **IO** — Typed inputs → outputs (what edges carry between nodes).
+- **Guardrails** — Defaults such as citations, refusal policy, verification.
 
-## Core Reasoning Strategies
-- **Chain of Thought (CoT)** — `prompts/chain-of-thought.yaml`  
-  Focus: Transparent reasoning. Highlights: Minimal slots, optional “show work” toggle, pairs well with verification agents.
-- **Tree of Thought (ToT)** — `prompts/tree-of-thought.yaml`  
-  Focus: Branch-and-evaluate reasoning. Highlights: Encourages multiple candidate paths before converging.
-- **Graph of Thought (GoT)** — `prompts/graph-of-thought.yaml`  
-  Focus: Networked idea exploration. Highlights: Propose–Critique–Synthesize loop for complex ideation.
-- **Panel of Experts (Single-Prompt ToT)** — `prompts/panel-of-experts-tot.yaml`  
-  Focus: Simulated debate. Highlights: Slot-driven expert personas with built-in consolidation step.
+## Core Reasoning
+- **Chain of Thought (CoT)** — `prompts/chain-of-thought.yaml`
+  - Purpose: Transparent reasoning; pairs with verification.
+  - IO: `{task, show_work}` → `{text}`
+- **Tree of Thought (ToT)** — `prompts/tree-of-thought.yaml`
+  - Purpose: Explore branches before converging.
+  - IO: `{question}` → `{candidates[], best}`
+- **Graph of Thought (GoT)** — `prompts/graph-of-thought.yaml`
+  - Purpose: Propose–Critique–Synthesize networks.
+  - IO: `{question}` → `{graph, synthesis}`
+- **Panel of Experts (MPS)** — `prompts/panel-of-experts-tot.yaml`
+  - Purpose: Debate with personas; consolidate.
+  - IO: `{topic, personas[]}` → `{summary, rationale}`
 
-## Verification & Self-Correction
-- **Chain of Verification (CoV)** — `prompts/chain-of-verification.yaml`  
-  Focus: Post-generation audit. Highlights: Draft → Plan → Execute → Finalize scaffold.
-- **Recursive Self-Improvement (RSIP)** — `prompts/recursive-self-improvement.yaml`  
-  Focus: Iterative refinement. Highlights: Generate–Evaluate–Improve loop with acceptance criteria.
-- **Self-Consistency** — `prompts/self-consistency.yaml`  
-  Focus: Sampling and majority vote. Highlights: Multiple candidate generations followed by tally instructions.
-- **Spontaneous Self-Correction (SPOC) Cue** — `prompts/spoc-cue.yaml`  
-  Focus: Lightweight sanity checks. Highlights: Drop-in cue to reduce quick hallucinations.
-- **CoV over RAG** — `prompts/cov-over-rag.yaml`  
-  Focus: Verifying retrieved claims. Highlights: Works directly on retrieved passages for factual QA.
+## Grounding & Memory
+- **RAG Retriever** — `prompts/rag-grounded.yaml`
+  - Purpose: Reduce provenance debt via citations (citations default ON when used upstream).
+  - IO: `{query}` → `{context[{text,source,page?}], query}`
+- **Knowledge Journal (KGoT‑inspired)** — `prompts/thinking-journal.yaml`
+  - Purpose: Persist facts and claims over time.
+  - IO: `{entry}` → `{updates, table}`
 
-## Knowledge Grounding & Memory
-- **Retrieval-Augmented Generation (RAG)** — `prompts/rag-grounded.yaml`  
-  Focus: Context-bound answers. Highlights: Slots for retrieved evidence and grounding instructions.
-- **Thinking Journal (KGoT-inspired)** — `prompts/thinking-journal.yaml`  
-  Focus: Persistent facts tracking. Highlights: Table-friendly schema for longitudinal analysis.
-- **Context-Aware Decomposition (CAD)** — `prompts/context-aware-decomposition.yaml`  
-  Focus: Breaking down long-form writing. Highlights: Sequential sections with guardrails for tone/voice.
+## Verification & Refinement
+- **Chain of Verification (CoV)** — `prompts/chain-of-verification.yaml`
+  - Purpose: Draft → Plan → Execute → Finalize; fewer hallucinations.
+  - IO: `{draft, context?}` → `{final, verifications[], usage}`
+- **Recursive Self‑Improvement (RSIP)** — `prompts/recursive-self-improvement.yaml`
+  - Purpose: Generate → Critique → Improve loops by criteria.
+  - IO: `{draft, criteria[]}` → `{improved, notes}`
+- **Self‑Consistency** — `prompts/self-consistency.yaml`
+  - Purpose: Majority vote across samples.
+  - IO: `{prompt}` → `{samples[], winner}`
+- **SPOC Cue** — `prompts/spoc-cue.yaml`
+  - Purpose: Fast sanity check for quick passes.
+  - IO: `{prompt}` → `{prompt_with_cue}`
 
-## Multimodal & Data Reasoning
-- **Caption-Assisted Reasoning** — `prompts/caption-assisted-reasoning.yaml`  
-  Focus: Interpreting complex visuals. Highlights: Slots for OCR, captioning hooks, and reasoning prompts.
-- **Charts of Thought** — `prompts/charts-of-thought.yaml`  
-  Focus: Table/figure analysis. Highlights: Transcribe → Verify → Analyze pipeline encoded in a single template.
-- **Thinking with Tables** — `prompts/thinking-with-tables.yaml`  
-  Focus: Structured numerical reasoning. Highlights: Enforces extraction before analysis.
-- **Spell-out Adjacency List (SoAL)** — `prompts/spell-out-adjacency-list.yaml`  
-  Focus: Diagram-to-text translation. Highlights: Helps translate graphs into narrative form.
-- **Data Analysis & Review** — `prompts/data-analysis-review.yaml`  
-  Focus: Summarizing data sets. Highlights: Blends trend spotting, anomalies, and verification checks.
+## Structure‑First & Multimodal
+- **Thinking with Tables** — `prompts/thinking-with-tables.yaml`
+  - Purpose: Extract tables before analysis; constrain downstream.
+  - IO: `{text}` → `{table}`
+- **Charts of Thought** — `prompts/charts-of-thought.yaml`
+  - Purpose: Chart → Table → Answer; references to rows/columns.
+  - IO: `{image}` → `{table}`
+- **Caption‑Assisted Reasoning** — `prompts/caption-assisted-reasoning.yaml`
+  - Purpose: Interpret visuals with OCR/captions.
+  - IO: `{image}` → `{text}`
 
-## Ideation & Strategic Planning
-- **Controlled Hallucination for Ideation (CHI)** — `prompts/controlled-hallucination.yaml`  
-  Focus: Safe creativity. Highlights: Guardrails for divergent thinking without losing traceability.
-- **Multi-Perspective Simulation (MPS)** — `prompts/multi-perspective-simulation.yaml`  
-  Focus: Scenario planning. Highlights: Multiple personas with aggregation guidance.
-- **Strategic Planning Pipeline** — `prompts/strategic-planning-pipeline.yaml`  
-  Focus: Strategy sprints. Highlights: Chains ToT, MPS, and CHI inside a single prompt.
-- **Strategic Planning Composition** — `compositions/strategic_planning.yaml`  
-  Focus: Multi-step orchestration. Highlights: Explicit flow for research, ideation, and alignment.
+## Governance & Safety
+- **Provenance Enforcement** — `prompts/provenance-enforcement.yaml`
+  - Purpose: Ensure claims carry citations.
+- **Safety & Bias Audit** — `prompts/safety-bias-audit.yaml`
+  - Purpose: Checklist and mitigations.
+- **Output Schema Enforcement** — `prompts/output-schema-enforcement.yaml`
+  - Purpose: JSON contract adherence (with schema).
 
-## Governance, Safety & Compliance
-- **Provenance & Citation Enforcement** — `prompts/provenance-enforcement.yaml`  
-  Focus: Source tracking. Highlights: Enforces citation fields and evidence statements.
-- **Safety & Bias Audit** — `prompts/safety-bias-audit.yaml`  
-  Focus: Risk review. Highlights: Structured checklist for fairness, safety, and mitigation steps.
-- **Output Schema Enforcement** — `prompts/output-schema-enforcement.yaml`  
-  Focus: JSON contract adherence. Highlights: Schema slot plus validation guidance.
-
-> **Planned extensions:** GraphRAG retrieval blocks, SPOC single-pass verification profiles, PSA/Eval harness nodes, and UI-specific wrappers (canvas nodes, inspector forms, command palette actions) will join the catalog as the React app scaffolding lands. Their documentation will live alongside these agents for consistency.
-
-## Ready-Made Compositions
-- **Deep Research** — `compositions/deep_research.yaml`  
-  Chains RAG grounding with verification passes for rigorous reports.
-- **Long-Form Writing** — `compositions/long_form_writing.yaml`  
-  Couples CAD with RSIP to draft, critique, and refine essays or briefs.
-- **Data Review** — `compositions/data_review.yaml`  
-  Walks through table/figure extraction, analysis, and cross-verification.
-
-## Supporting Assets
-- **Schema** — `schemas/prompt_template.schema.json` keeps agent metadata consistent inside the builder.
-- **UI Blueprint** — `ui/ui.blueprint.json` suggests control types, educational hints, and export targets.
-- **Reproducibility Protocol** — `reproducibility/*` ties each agent back to evaluation and logging practices.
-
-Use this map when designing the drag-and-drop experience: each agent becomes a node with defined inputs/outputs, while compositions showcase the higher-order flows learners can explore and remix.
-
-
-**Runtime & UI Notes**
-- LangGraph-backed run preview surfaces guidance, failure modes, acceptance criteria, and params for each agent.
-- The Inspector Coach panel pulls `when_to_use`, `failure_modes`, `combines_with`, and composition steps directly from these YAML definitions.
+## Ready‑Made Compositions
+- **Deep Research (RAG + CoV)** — `compositions/deep_research.yaml`
+- **Long‑Form Writing (CAD + RSIP)** — `compositions/long_form_writing.yaml`
+- **Data Review (Thinking with Tables)** — `compositions/data_review.yaml`
+- **Strategic Planning (ToT + MPS + CHI)** — `compositions/strategic_planning.yaml`
 
 ## Studio & Testing Notes
-- Friendly labels: the Block Library uses plain-English names (e.g., "Role & Rules", "Your Task", "Use Your Sources (RAG)", "Avoid Duplicates", "Verify Facts", "Make a Table"). Keep these stable for a non-expert audience.
-- Drag & Drop: HTML5 DnD from the Block Library onto the React Flow canvas creates extra nodes. In tests, a deterministic helper `window.__testCreateNode(baseId, x, y)` is exposed to create nodes when native DnD is flaky.
-- Edges: Nodes expose left/right handles; connecting them emits a user edge that appears in the compiled PromptSpec and the header edge count.
-- Save/Load: Use the Flow dialog to export/import a snapshot (`{ presetId, extras, edges }`). Tests also use `window.__testReplaceFlow(snapshot)` to reconstruct graphs.
-- Selectors: E2E hooks are stable and documented:
-  - Block cards: `data-testid="block-card-<blockId>"`
-  - Flow select: `data-testid="flow-select"`
-  - Node cards: `data-testid="flow-node-<id>"`, with `data-node-baseid` and `data-node-instance` attributes
-  - Prompt preview: `data-testid="prompt-preview"`
-- Commands:
-  - Dev: `cd studio && npm run dev`
-  - Unit: `npm run test:unit`
-  - E2E: `npx playwright install --with-deps && npm run test:e2e -- --reporter=line`
-  - Build/Start: `npm run build && npm run start`
+- DnD: drag block cards onto canvas; tests may use `window.__testCreateNode` hook.
+- Edges: left/right handles; user edges appear in compiled PromptSpec.
+- Save/Load: Flow dialog or `window.__testReplaceFlow(snapshot)` in tests.
+- Inspectors: pull `when_to_use`, `failure_modes`, `acceptance_criteria` directly from YAML.
+- Commands: Dev `cd studio && npm run dev`; Unit `npm run test:unit`; E2E `npm run test:e2e` (install browsers first); Build `npm run build && npm start`.
+
+---
+
+This catalog is maintained alongside the Master Build Spec. When you add a new block:
+1) Add/validate its YAML under `prompts/`.
+2) Update the block schema (Zod) and UI form hints.
+3) Regenerate the UI blueprint.
+4) Add an example flow and E2E test.
