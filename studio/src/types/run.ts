@@ -23,7 +23,6 @@ export interface RunRecord {
   costUsd: number;
   usage: TokenUsage;
   manifest: RunManifest;
-  verification: LangGraphVerificationSummary;
+  verification?: LangGraphVerificationSummary;
   message: string;
 }
-

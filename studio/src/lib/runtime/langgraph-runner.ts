@@ -3,7 +3,6 @@ import { Annotation, StateGraph, START, END } from "@langchain/langgraph";
 import type { PromptSpec, PromptSpecNode } from "@/lib/promptspec";
 import type {
   AudioTimelinePayload,
-  ModalityPayloadRequirement,
   ModalityRequirement,
   ModalityState,
   PromptMetadata,
@@ -236,8 +235,7 @@ async function runNodeWithProposerVerifier(
   graph.addNode("verify", async (state: GraphStateType): Promise<GraphUpdateType> => {
     const iteration = state.iteration ?? 1;
     const criteria = deriveCriteria(context);
-    const needsRevision =
-      mode.mode === "recursive" && iteration === 1 && mode.maxIterations > 1;
+    const needsRevision = mode.mode === "recursive" && iteration < mode.maxIterations;
     const notes: string[] = [];
 
     if (needsRevision) {

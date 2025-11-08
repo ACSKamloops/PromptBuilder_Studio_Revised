@@ -79,6 +79,7 @@ import {
 } from "@/components/ui/dialog";
 import { OnboardingDialog } from "@/components/onboarding-dialog";
 import type { RunRecord } from "@/types/run";
+import type { LangGraphVerificationSummary } from "@/lib/runtime/langgraph-runner";
 import type { ApprovalTask } from "@/types/approval";
 
 const RAG_DEFAULT_PARAMS = {
@@ -99,6 +100,11 @@ const APPROVAL_DEFAULT_PARAMS = {
   approval_notes: "",
 };
 const isApprovalBlock = (baseId: string) => baseId === "approval-gate";
+const DEFAULT_VERIFICATION_SUMMARY: LangGraphVerificationSummary = {
+  totalInterventions: 0,
+  averageConfidence: 0,
+  blocks: [],
+};
 
 const cloneRagDefaults = (): typeof RAG_DEFAULT_PARAMS => ({
   ...RAG_DEFAULT_PARAMS,
@@ -1406,6 +1412,7 @@ function CanvasPanel({
   const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [liveLogs, setLiveLogs] = useState<string[]>([]);
+  const currentVerificationSummary = runResult?.verification ?? DEFAULT_VERIFICATION_SUMMARY;
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [gridSize, setGridSize] = useState<number>(16);
   const [menu, setMenu] = useState<{ open: boolean; x: number; y: number; id: string | null }>({ open: false, x: 0, y: 0, id: null });
@@ -1989,7 +1996,7 @@ function CanvasPanel({
                       <div>
                         <p className="font-medium">Verifier</p>
                         <p className="text-muted-foreground">
-                          {runResult.verification.totalInterventions} interventions · avg confidence {runResult.verification.averageConfidence.toFixed(2)}
+                          {currentVerificationSummary.totalInterventions} interventions · avg confidence {currentVerificationSummary.averageConfidence.toFixed(2)}
                         </p>
                       </div>
                     </div>
@@ -2098,7 +2105,7 @@ function CanvasPanel({
                             <div className="min-w-0">
                               <p className="truncate font-medium text-foreground">{entry.runId}</p>
                               <p className="text-muted-foreground">
-                                {new Date(entry.startedAt).toLocaleTimeString()} · {entry.usage.totalTokens} tokens · conf {entry.verification.averageConfidence.toFixed(2)}
+                                {new Date(entry.startedAt).toLocaleTimeString()} · {entry.usage.totalTokens} tokens · conf {(entry.verification ?? DEFAULT_VERIFICATION_SUMMARY).averageConfidence.toFixed(2)}
                               </p>
                             </div>
                             <div className="text-muted-foreground">${entry.costUsd.toFixed(4)}</div>
@@ -2115,8 +2122,8 @@ function CanvasPanel({
                       </pre>
                     </div>
                   )}
-              </div>
-            )}
+                </div>
+              )}
           </DialogContent>
         </Dialog>
         <OnboardingDialog openFromHelp={helpOpen} onClose={() => setHelpOpen(false)} />

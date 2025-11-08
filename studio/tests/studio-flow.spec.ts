@@ -52,7 +52,10 @@ test.describe('Studio flow interactions', () => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Run (Preview)' }).click();
     // In headless CI, match on stable message + output lines
-    await expect(page.locator('text=Executed via LangGraph runnable stub').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Output: Stubbed execution for System Mandate')).toBeVisible();
+    await expect(
+      page.locator('text=Executed proposer/verifier LangGraph with intrinsic self-check logging').first(),
+    ).toBeVisible({ timeout: 10_000 });
+    const runDialog = page.getByLabel('Run Preview');
+    await expect(runDialog).toContainText('System Mandate', { timeout: 10_000 });
   });
 });
