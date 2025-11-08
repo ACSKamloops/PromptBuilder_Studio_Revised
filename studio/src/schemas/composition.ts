@@ -1,30 +1,20 @@
 import { z } from "zod";
 
-export const CompNode = z.object({
-  id: z.string(),
-  type: z.enum(["prompt", "tool", "branch", "merge"]).optional(),
-  promptRef: z.string().optional(),
-  inputs: z.record(z.string()).default({}),
-  params: z.record(z.any()).default({}),
-});
-
-export const CompEdge = z.object({
-  id: z.string(),
-  from: z.string(),
-  to: z.string(),
-  out: z.string().default("result"),
-  in: z.string().default("input"),
+const CompositionStep = z.object({
+  use: z.string(),
+  map: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .optional(),
+  params: z.record(z.string(), z.any()).optional(),
+  note: z.string().optional(),
 });
 
 export const Composition = z.object({
   id: z.string().optional(),
   title: z.string().optional(),
   description: z.string().optional(),
-  inputs: z.array(z.string()).default([]).optional(),
-  nodes: z.array(CompNode).default([]),
-  edges: z.array(CompEdge).default([]),
-  outputs: z.array(z.string()).default(["result"]).optional(),
+  steps: z.array(CompositionStep),
+  outputs: z.array(z.union([z.string(), z.record(z.string(), z.string())])).optional(),
 });
 
 export type Composition = z.infer<typeof Composition>;
-

@@ -34,6 +34,7 @@ Modern, Zapier‑like workflow studio for prompts: drag‑and‑drop blocks (RAG
 ## Development Workspace
 - `studio/` — Next.js + React Flow editor. From `studio/`: `npm ci && npm run dev`.
 - Install Playwright with `npx playwright install --with-deps` once; E2E via `npm run test:e2e`.
+- Generate the UI blueprint from typed schemas with `npm run gen:blueprint` (auto-runs on dev/build/test).
 - Unit tests `npm run test:unit`, schema checks `npm run validate:prompts`, typecheck `npm run typecheck`.
 - The Studio supports: YAML‑driven block metadata, slot forms, prompt previews, PromptSpec export, snapping canvas, run preview (stubbed), context menus, and a Coach panel that reads `when_to_use`, `failure_modes`, and composition steps.
 - Shared assets live at repo root (`prompts/`, `compositions/`, `schemas/`). See `AGENTS.md` and `docs/Instructions for Prompt.md` for the Master Build Spec and block catalog.

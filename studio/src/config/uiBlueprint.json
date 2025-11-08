@@ -1,4 +1,6 @@
 {
+  "version": 1,
+  "generatedAt": "2025-11-08T02:15:17.378Z",
   "slot_controls": {
     "text": {
       "component": "TextInput"
@@ -23,11 +25,28 @@
       "props": {
         "min": 0
       }
+    },
+    "json": {
+      "component": "CodeInput",
+      "props": {
+        "language": "json",
+        "minRows": 6
+      }
+    },
+    "table": {
+      "component": "TableBuilder"
+    },
+    "file": {
+      "component": "FilePicker"
     }
   },
   "rendering_rules": [
     {
       "if_tag": "citations",
+      "hint": "Citations stay ON whenever RAG context is connected."
+    },
+    {
+      "if_tag": "grounding",
       "show": "citation_style"
     },
     {
@@ -36,7 +55,11 @@
     },
     {
       "if_category": "playbook",
-      "hint": "Outputs of each step feed into the next; show a mini pipeline graph."
+      "hint": "Outputs of each step feed the next; render a mini pipeline preview."
+    },
+    {
+      "if_category": "verification",
+      "hint": "Surface Draft → Plan → Execute → Finalize status."
     }
   ],
   "export": {

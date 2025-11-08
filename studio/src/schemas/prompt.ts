@@ -9,7 +9,7 @@ export const VarDef = z.object({
 
 export const OutputSchema = z.object({
   type: z.enum(["json", "text"]).default("text"),
-  jsonSchema: z.record(z.any()).optional(),
+  jsonSchema: z.record(z.string(), z.any()).optional(),
 });
 
 export const PromptDoc = z.object({
@@ -26,4 +26,3 @@ export const PromptDoc = z.object({
 });
 
 export type PromptDoc = z.infer<typeof PromptDoc>;
-

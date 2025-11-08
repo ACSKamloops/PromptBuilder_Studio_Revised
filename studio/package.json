@@ -12,7 +12,12 @@
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "validate:prompts": "node scripts/validate-prompts.mjs"
+    "validate:prompts": "ts-node --compiler-options '{\"module\":\"commonjs\"}' scripts/validate-prompts.ts",
+    "gen:blueprint": "node scripts/gen-ui-blueprint.mjs",
+    "predev": "npm run gen:blueprint",
+    "prebuild": "npm run gen:blueprint",
+    "pretest:unit": "npm run gen:blueprint",
+    "prepare": "npm run gen:blueprint"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
