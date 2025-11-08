@@ -65,6 +65,18 @@ import {
 import { OnboardingDialog } from "@/components/onboarding-dialog";
 import type { RunRecord } from "@/types/run";
 
+const RAG_DEFAULT_PARAMS = {
+  rag_sources: [] as Array<{ kind: "file" | "web" | "collection"; ref: string }>,
+  rag_topK: 5,
+  rag_chunkSize: 1200,
+  rag_chunkOverlap: 120,
+  rag_citationStyle: "inline",
+  rag_sampleQuery: "",
+  rag_sampleContext: "",
+};
+
+const isRagBlock = (baseId: string) => baseId === "rag-retriever" || baseId === "graphrag";
+
 type RunPreviewResponse = RunRecord;
 
 interface StudioShellProps {
@@ -315,7 +327,7 @@ const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false);
     }));
   }, [activePreset, positions, metadataById, nodeStatuses, customLabels]);
   const nodes = useMemo(() => [...baselineNodes, ...extraNodes], [baselineNodes, extraNodes]);
-  const promptSpec = useMemo(() => {
+const promptSpec = useMemo(() => {
     const base = buildPromptSpec(activePreset, nodeParams, metadataById);
     // Extend with extra nodes and user edges
     const extra = extraNodes.map((n) => {
@@ -632,15 +644,17 @@ const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false);
         ? metadataById.get(descriptor.metadataId)
         : metadataById.get(baseId);
 
-      if (metadata?.slots?.length) {
+      const slotDefaults = metadata?.slots
+        ? Object.fromEntries(
+            (metadata.slots ?? []).map((s) => [s.name, s.default ?? (s.type === "number" ? 0 : "")]),
+          )
+        : {};
+      const ragDefaults = isRagBlock(baseId) ? { ...RAG_DEFAULT_PARAMS } : {};
+      const initial = { ...slotDefaults, ...ragDefaults };
+      if (Object.keys(initial).length > 0) {
         setNodeParams((prev) => ({
           ...prev,
-          [uid]: Object.fromEntries(
-            (metadata?.slots ?? []).map((s) => [
-              s.name,
-              s.default ?? (s.type === "number" ? 0 : ""),
-            ]),
-          ),
+          [uid]: initial,
         }));
       }
 
@@ -2375,6 +2389,8 @@ function BlockParameters({
   blueprint: UIBlueprint;
   ragConnected: boolean;
 }) {
+  const baseId = blockId.split("#")[0];
+  const isRagNode = isRagBlock(baseId);
   const guardEligible =
     !!metadata &&
     (metadata.tags?.includes("citations") ||
@@ -2386,6 +2402,31 @@ function BlockParameters({
       onValueChange(blockId, "guard_requireCitations", true);
     }
   }, [guardEligible, ragConnected, blockId, onValueChange, values?.guard_requireCitations]);
+  const ragSources = Array.isArray(values?.rag_sources)
+    ? (values.rag_sources as Array<{ kind: "file" | "web" | "collection"; ref: string }>)
+    : [...RAG_DEFAULT_PARAMS.rag_sources];
+  const ragTopK =
+    typeof values?.rag_topK === "number" ? (values.rag_topK as number) : RAG_DEFAULT_PARAMS.rag_topK;
+  const ragChunkSize =
+    typeof values?.rag_chunkSize === "number"
+      ? (values.rag_chunkSize as number)
+      : RAG_DEFAULT_PARAMS.rag_chunkSize;
+  const ragChunkOverlap =
+    typeof values?.rag_chunkOverlap === "number"
+      ? (values.rag_chunkOverlap as number)
+      : RAG_DEFAULT_PARAMS.rag_chunkOverlap;
+  const ragCitationStyle =
+    typeof values?.rag_citationStyle === "string"
+      ? (values.rag_citationStyle as string)
+      : RAG_DEFAULT_PARAMS.rag_citationStyle;
+  const ragSampleQuery =
+    typeof values?.rag_sampleQuery === "string"
+      ? (values.rag_sampleQuery as string)
+      : RAG_DEFAULT_PARAMS.rag_sampleQuery;
+  const ragSampleContext =
+    typeof values?.rag_sampleContext === "string"
+      ? (values.rag_sampleContext as string)
+      : RAG_DEFAULT_PARAMS.rag_sampleContext;
 
   if (!metadata?.slots || metadata.slots.length === 0) {
     return (
@@ -2448,6 +2489,141 @@ function BlockParameters({
             <p>
               Controls whether the model can decline when prompts step outside grounded context or policy.
             </p>
+          </div>
+        </div>
+      )}
+      {isRagNode && (
+        <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-foreground">Grounding sources</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                onValueChange(blockId, "rag_sources", [
+                  ...ragSources,
+                  { kind: "file", ref: "" },
+                ])
+              }
+            >
+              Add source
+            </Button>
+          </div>
+          {ragSources.length === 0 ? (
+            <p>No sources yet. Add files, web collections, or managed corpora.</p>
+          ) : (
+            <div className="space-y-2">
+              {ragSources.map((source, index) => (
+                <div key={`${source.kind}-${index}`} className="flex flex-wrap gap-2">
+                  <Select
+                    value={source.kind}
+                    onValueChange={(next) => {
+                      const nextSources = [...ragSources];
+                      nextSources[index] = { ...nextSources[index], kind: next as any };
+                      onValueChange(blockId, "rag_sources", nextSources);
+                    }}
+                  >
+                    <SelectTrigger className="w-28">
+                      <SelectValue placeholder="Kind" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="file">File</SelectItem>
+                      <SelectItem value="web">Web</SelectItem>
+                      <SelectItem value="collection">Collection</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    className="flex-1"
+                    placeholder="Reference or handle"
+                    value={source.ref}
+                    onChange={(event) => {
+                      const nextSources = [...ragSources];
+                      nextSources[index] = { ...nextSources[index], ref: event.currentTarget.value };
+                      onValueChange(blockId, "rag_sources", nextSources);
+                    }}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const nextSources = ragSources.filter((_, i) => i !== index);
+                      onValueChange(blockId, "rag_sources", nextSources);
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <Label className="text-xs text-foreground">Top K</Label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={ragTopK}
+                onChange={(e) => onValueChange(blockId, "rag_topK", Number(e.currentTarget.value))}
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-foreground">Chunk size</Label>
+              <Input
+                type="number"
+                min={200}
+                max={4000}
+                value={ragChunkSize}
+                onChange={(e) =>
+                  onValueChange(blockId, "rag_chunkSize", Number(e.currentTarget.value))
+                }
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-foreground">Chunk overlap</Label>
+              <Input
+                type="number"
+                min={0}
+                max={400}
+                value={ragChunkOverlap}
+                onChange={(e) =>
+                  onValueChange(blockId, "rag_chunkOverlap", Number(e.currentTarget.value))
+                }
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-foreground">Citation style</Label>
+            <Select
+              value={ragCitationStyle}
+              onValueChange={(next) => onValueChange(blockId, "rag_citationStyle", next)}
+            >
+              <SelectTrigger className="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="inline">Inline [n]</SelectItem>
+                <SelectItem value="footnote">Footnote</SelectItem>
+                <SelectItem value="json">JSON block</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-foreground">Sample query</Label>
+            <Input
+              value={ragSampleQuery}
+              onChange={(e) => onValueChange(blockId, "rag_sampleQuery", e.currentTarget.value)}
+              placeholder="e.g., Federal EV incentives timeline"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-foreground">Sample context (first passage)</Label>
+            <Textarea
+              rows={3}
+              value={ragSampleContext}
+              onChange={(e) => onValueChange(blockId, "rag_sampleContext", e.currentTarget.value)}
+              placeholder="Paste a retrieved passage to preview downstream prompts."
+            />
           </div>
         </div>
       )}
@@ -2791,13 +2967,20 @@ function buildInitialNodeParams(
     const metadata =
       (descriptor?.metadataId ? metadataMap.get(descriptor.metadataId) : undefined) ??
       metadataMap.get(nodeId);
-    if (!metadata?.slots) continue;
-
-    result[nodeId] = {};
-    for (const slot of metadata.slots) {
-      if (slot?.name) {
-        result[nodeId][slot.name] = slot.default ?? "";
+    if (metadata?.slots) {
+      result[nodeId] = {};
+      for (const slot of metadata.slots) {
+        if (slot?.name) {
+          result[nodeId][slot.name] = slot.default ?? (slot.type === "number" ? 0 : "");
+        }
       }
+    }
+
+    if (isRagBlock(nodeId)) {
+      result[nodeId] = {
+        ...(result[nodeId] ?? {}),
+        ...RAG_DEFAULT_PARAMS,
+      };
     }
   }
   return result;

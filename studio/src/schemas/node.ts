@@ -29,6 +29,8 @@ export const RagParams = z.object({
     .object({ size: z.number().min(200).max(4000).default(1200), overlap: z.number().min(0).max(400).default(120) })
     .default({ size: 1200, overlap: 120 }),
   citationStyle: z.enum(["inline", "footnote", "json"]).default("inline"),
+  sampleQuery: z.string().optional(),
+  sampleContext: z.string().optional(),
 });
 
 export const PromptParams = z.object({
@@ -230,4 +232,3 @@ const BaseNodeFields = z.object({
 export const FlowNodeDefinition = BaseNodeFields.and(NodeParamsByType);
 export type FlowNodeDefinition = z.infer<typeof FlowNodeDefinition>;
 export type AnyNodeParams = z.infer<typeof NodeParamsByType>;
-
