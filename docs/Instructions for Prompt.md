@@ -327,6 +327,9 @@ export const NodeParamsByType = z.discriminatedUnion("type", [
 
 * **Thinking with Tables wrapper.** Forces table extraction from prose *before* downstream analysis. Downstream Prompt nodes are **constrained** to the produced table via mapping. 
 * **Charts‑of‑Thought wrapper.** Uses **Chart Extract** to convert chart images to typed tables; subsequent answers **must** reference table rows/columns; Guardrail refuses if table missing. 
+* **Audio Timeline Ingest.** Upload interview/audio assets, auto-track speaker beats + timestamps, and emit a validated timeline structure before reasoning.
+* **Video Event Graph.** Break long-form video into timestamped semantic nodes + causal/temporal edges; downstream prompts navigate the graph instead of raw transcripts.
+* **Scene Graph Builder.** Encode 3D/visual environments as node/relationship graphs (e.g., `camera looks_at subject`), enabling spatial reasoning and simulation-ready prompts.
 
 > **Why this?** “**Structure precedes reasoning**” systematically improves accuracy and auditability across text and images. 
 

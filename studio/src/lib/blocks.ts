@@ -26,5 +26,6 @@ export function resolveBlockDescriptor(
     status: "available",
     metadataId: metadata.id,
     references: metadata.relativePath ? [metadata.relativePath] : undefined,
+    modalities: metadata.modalities,
   };
 }

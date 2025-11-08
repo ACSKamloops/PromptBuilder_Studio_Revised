@@ -20,8 +20,16 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { blockCatalog } from "@/data/block-catalog";
-import type { PromptMetadata, SlotDefinition } from "@/types/prompt-metadata";
+import { blockCatalog, type BlockDescriptor } from "@/data/block-catalog";
+import type {
+  PromptMetadata,
+  SlotDefinition,
+  ModalityRequirement,
+  ModalityState,
+  AudioTimelinePayload,
+  VideoEventGraphPayload,
+  SceneGraphPayload,
+} from "@/types/prompt-metadata";
 import uiBlueprintJson from "@/config/uiBlueprint.json" assert { type: "json" };
 import type { UIBlueprint } from "@/types/ui-blueprint";
 import { CoachPanel, type CoachInsight } from "@/components/coach-panel";
@@ -49,6 +57,12 @@ import { resolveBlockDescriptor } from "@/lib/blocks";
 import { evaluateExpression } from "@/lib/mapping-expression";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  ModalityRequirementSection,
+  SceneGraphBuilder,
+  VideoEventGraphBuilder,
+  WaveformEditor,
+} from "@/components/modality-controls";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -85,6 +99,16 @@ const APPROVAL_DEFAULT_PARAMS = {
   approval_notes: "",
 };
 const isApprovalBlock = (baseId: string) => baseId === "approval-gate";
+
+const cloneRagDefaults = (): typeof RAG_DEFAULT_PARAMS => ({
+  ...RAG_DEFAULT_PARAMS,
+  rag_sources: [],
+});
+
+const cloneApprovalDefaults = (): typeof APPROVAL_DEFAULT_PARAMS => ({
+  ...APPROVAL_DEFAULT_PARAMS,
+  approval_assignees: [],
+});
 
 type RunPreviewResponse = RunRecord;
 
@@ -464,9 +488,10 @@ const promptSpec = useMemo(() => {
     const meta = fromCatalog?.metadataId
       ? metadataById.get(fromCatalog.metadataId)
       : metadataById.get(baseId);
+    const summary = composeBlockSummary(fromCatalog, meta);
     return {
       label: fromCatalog?.name ?? meta?.title ?? baseId,
-      summary: meta?.when_to_use?.split('\n')[0] ?? fromCatalog?.description,
+      summary,
       category: fromCatalog?.category ?? meta?.category ?? 'Structure',
     };
   }, [metadataById]);
@@ -648,36 +673,58 @@ const promptSpec = useMemo(() => {
         };
 
         if (snap?.extras?.length) {
-          const rebuilt: FlowNode[] = snap.extras.map((ex) => {
-            const baseId = ex.baseId ?? (ex.id?.includes('#') ? ex.id.split('#')[0] : ex.id);
+          const extrasWithContext: Array<{
+            ex: {
+              id: string;
+              baseId?: string;
+              position?: { x: number; y: number };
+              label?: string;
+              params?: Record<string, unknown>;
+            };
+            id: string;
+            baseId: string;
+            descriptor?: BlockDescriptor;
+            metadata?: PromptMetadata;
+          }> = [];
+
+          for (const ex of snap.extras) {
+            if (!ex?.id) continue;
+            const baseId = ex.baseId ?? (ex.id.includes('#') ? ex.id.split('#')[0] : ex.id);
             const descriptor = resolveBlockDescriptor(baseId, metadataById);
             const metadata = descriptor?.metadataId
               ? metadataById.get(descriptor.metadataId)
               : metadataById.get(baseId);
-            const id = ex.id;
-            return {
-              id,
-              position: ex.position ?? { x: 240, y: 160 },
-              type: 'default',
-              data: {
-                label: ex.label ?? descriptor?.name ?? metadata?.title ?? baseId,
-                summary:
-                  descriptor?.description ??
-                  metadata?.when_to_use ??
-                  metadata?.failure_modes ??
-                  metadata?.acceptance_criteria ??
-                  '',
-                category: descriptor?.category ?? metadata?.category,
-                metadataId: metadata?.id ?? descriptor?.metadataId ?? baseId,
-              },
-            } as FlowNode;
-          });
+            extrasWithContext.push({ ex, id: ex.id, baseId, descriptor, metadata });
+          }
+
+          const rebuilt: FlowNode[] = extrasWithContext.map(({ ex, id, baseId, descriptor, metadata }) => ({
+            id,
+            position: ex.position ?? { x: 240, y: 160 },
+            type: 'default',
+            data: {
+              label: ex.label ?? descriptor?.name ?? metadata?.title ?? baseId,
+              summary: composeBlockSummary(descriptor, metadata),
+              category: descriptor?.category ?? metadata?.category,
+              metadataId: metadata?.id ?? descriptor?.metadataId ?? baseId,
+            },
+          } as FlowNode));
+
           setExtraNodes(rebuilt);
           setNodeParams((prev) => {
             const next = { ...prev } as Record<string, Record<string, unknown>>;
-            for (const ex of snap.extras) {
-              if (ex.id && ex.params) {
-                next[ex.id] = { ...(next[ex.id] ?? {}), ...ex.params };
+            for (const entry of extrasWithContext) {
+              const restored =
+                entry.ex.params && typeof entry.ex.params === "object"
+                  ? (entry.ex.params as Record<string, unknown>)
+                  : {};
+              const defaults = buildDefaultParamsForBlock(entry.baseId, metadataById);
+              const combined = {
+                ...(Object.keys(defaults).length > 0 ? defaults : {}),
+                ...(next[entry.id] ?? {}),
+                ...restored,
+              } as Record<string, unknown>;
+              if (Object.keys(combined).length > 0) {
+                next[entry.id] = combined;
               }
             }
             return next;
@@ -735,18 +782,11 @@ const promptSpec = useMemo(() => {
         ? metadataById.get(descriptor.metadataId)
         : metadataById.get(baseId);
 
-      const slotDefaults = metadata?.slots
-        ? Object.fromEntries(
-            (metadata.slots ?? []).map((s) => [s.name, s.default ?? (s.type === "number" ? 0 : "")]),
-          )
-        : {};
-      const ragDefaults = isRagBlock(baseId) ? { ...RAG_DEFAULT_PARAMS } : {};
-      const approvalDefaults = isApprovalBlock(baseId) ? { ...APPROVAL_DEFAULT_PARAMS } : {};
-      const initial = { ...slotDefaults, ...ragDefaults, ...approvalDefaults };
-      if (Object.keys(initial).length > 0) {
+      const defaultParams = buildDefaultParamsForBlock(baseId, metadataById);
+      if (Object.keys(defaultParams).length > 0) {
         setNodeParams((prev) => ({
           ...prev,
-          [uid]: initial,
+          [uid]: defaultParams,
         }));
       }
 
@@ -758,12 +798,7 @@ const promptSpec = useMemo(() => {
           type: "default",
           data: {
             label: descriptor?.name ?? metadata?.title ?? baseId,
-            summary:
-              descriptor?.description ??
-              metadata?.when_to_use ??
-              metadata?.failure_modes ??
-              metadata?.acceptance_criteria ??
-              "",
+            summary: composeBlockSummary(descriptor, metadata),
             category: descriptor?.category ?? metadata?.category,
             metadataId: metadata?.id ?? descriptor?.metadataId ?? baseId,
           },
@@ -2645,7 +2680,10 @@ function InspectorPanel({
       status: "available",
       metadataId: metadata?.id,
       references: metadata?.relativePath ? [metadata.relativePath] : undefined,
+      modalities: metadata?.modalities,
     } as const);
+
+  const modalityRequirements = metadata?.modalities ?? effectiveDescriptor.modalities ?? [];
 
   return (
     <div className="flex h-full flex-col">
@@ -2741,6 +2779,7 @@ function InspectorPanel({
             onValueChange={onValueChange}
             blueprint={blueprint}
             ragConnected={ragConnected}
+            modalities={modalityRequirements}
           />
           <PromptPreview metadata={metadata} values={values} />
           <FlowSpecView promptSpec={promptSpec} focusedNodeId={selectedBlockId} />
@@ -2758,6 +2797,7 @@ function BlockParameters({
   onValueChange,
   blueprint,
   ragConnected,
+  modalities,
 }: {
   blockId: string;
   metadata?: PromptMetadata;
@@ -2765,6 +2805,7 @@ function BlockParameters({
   onValueChange: (blockId: string, key: string, value: unknown) => void;
   blueprint: UIBlueprint;
   ragConnected: boolean;
+  modalities?: ModalityRequirement[];
 }) {
   const baseId = blockId.split("#")[0];
   const isRagNode = isRagBlock(baseId);
@@ -2823,6 +2864,9 @@ function BlockParameters({
 
   const hasSlots = Boolean(metadata?.slots && metadata.slots.length > 0);
   const renderingHints = metadata ? deriveRenderingHints(metadata, blueprint) : [];
+  const modalityRequirements = modalities ?? [];
+  const modalityState: ModalityState =
+    (values?.modalities as ModalityState | undefined) ?? {};
 
   return (
     <div className="space-y-4">
@@ -3096,6 +3140,22 @@ function BlockParameters({
           ))}
         </div>
       )}
+      {modalityRequirements.length > 0 && (
+        <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-3">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-foreground">Multimodal payloads</p>
+            <p className="text-xs text-muted-foreground">
+              Upload, annotate, and structure the required audio, video, or scene data before this
+              block executes.
+            </p>
+          </div>
+          <ModalityRequirementSection
+            requirements={modalityRequirements}
+            state={modalityState}
+            onStateChange={(next) => onValueChange(blockId, "modalities", next)}
+          />
+        </div>
+      )}
       {hasSlots ? (
         <div className="space-y-4">
           {metadata?.slots?.map((slot) => (
@@ -3255,6 +3315,21 @@ function SlotField({
           max={typeof controlProps.max === "number" ? controlProps.max : undefined}
           step={typeof controlProps.step === "number" ? controlProps.step : undefined}
         />
+      ) : component === "AudioTimelineEditor" ? (
+        <WaveformEditor
+          value={value as AudioTimelinePayload | undefined}
+          onChange={(next) => onChange(next)}
+        />
+      ) : component === "VideoEventGraphBuilder" ? (
+        <VideoEventGraphBuilder
+          value={value as VideoEventGraphPayload | undefined}
+          onChange={(next) => onChange(next)}
+        />
+      ) : component === "SceneGraphBuilder" ? (
+        <SceneGraphBuilder
+          value={value as SceneGraphPayload | undefined}
+          onChange={(next) => onChange(next)}
+        />
       ) : (
         <Input
           id={id}
@@ -3347,6 +3422,124 @@ function deriveRenderingHints(metadata: PromptMetadata, blueprint: UIBlueprint):
   return hints;
 }
 
+function summarizeModalityRequirements(
+  requirements?: ModalityRequirement[],
+): string | undefined {
+  if (!requirements || requirements.length === 0) {
+    return undefined;
+  }
+  return requirements
+    .map((requirement) => {
+      const payloads = requirement.payloads.map((payload) => payload.label).join(", ");
+      return `${requirement.label ?? requirement.modality}: ${payloads}`;
+    })
+    .join(" | ");
+}
+
+function createDefaultModalityState(
+  requirements?: ModalityRequirement[],
+): ModalityState | undefined {
+  if (!requirements || requirements.length === 0) {
+    return undefined;
+  }
+
+  const state: ModalityState = {};
+  const typedState = state as Record<string, Record<string, unknown>>;
+
+  for (const requirement of requirements) {
+    if (!requirement || !Array.isArray(requirement.payloads)) {
+      continue;
+    }
+
+    for (const payload of requirement.payloads) {
+      if (!payload?.type) {
+        continue;
+      }
+
+      let defaultValue:
+        | AudioTimelinePayload
+        | VideoEventGraphPayload
+        | SceneGraphPayload
+        | Record<string, unknown>
+        | undefined;
+
+      switch (payload.type) {
+        case "audio_timeline":
+          defaultValue = { annotations: [] } as AudioTimelinePayload;
+          break;
+        case "video_event_graph":
+          defaultValue = { events: [], edges: [] } as VideoEventGraphPayload;
+          break;
+        case "scene_graph":
+          defaultValue = { nodes: [], relationships: [] } as SceneGraphPayload;
+          break;
+        default:
+          defaultValue = {};
+      }
+
+      const existing = typedState[requirement.modality] ?? {};
+      typedState[requirement.modality] = {
+        ...existing,
+        [payload.type]: defaultValue ?? {},
+      };
+    }
+  }
+
+  return Object.keys(typedState).length > 0 ? state : undefined;
+}
+
+function buildDefaultParamsForBlock(
+  nodeId: string,
+  metadataMap: Map<string, PromptMetadata>,
+): Record<string, unknown> {
+  const descriptor = resolveBlockDescriptor(nodeId, metadataMap);
+  const metadata =
+    (descriptor?.metadataId ? metadataMap.get(descriptor.metadataId) : undefined) ??
+    metadataMap.get(nodeId);
+
+  const defaults: Record<string, unknown> = {};
+
+  if (metadata?.slots) {
+    for (const slot of metadata.slots) {
+      if (!slot?.name) continue;
+      defaults[slot.name] = slot.default ?? (slot.type === "number" ? 0 : "");
+    }
+  }
+
+  if (isRagBlock(nodeId)) {
+    Object.assign(defaults, cloneRagDefaults());
+  }
+
+  if (isApprovalBlock(nodeId)) {
+    Object.assign(defaults, cloneApprovalDefaults());
+  }
+
+  const modalityDefaults = createDefaultModalityState(
+    metadata?.modalities ?? descriptor?.modalities,
+  );
+  if (modalityDefaults) {
+    defaults.modalities = modalityDefaults;
+  }
+
+  return defaults;
+}
+
+function composeBlockSummary(
+  descriptor: BlockDescriptor | undefined,
+  metadata: PromptMetadata | undefined,
+): string {
+  const baseSummary =
+    metadata?.when_to_use?.split("\n")[0]?.trim() ??
+    descriptor?.description ??
+    metadata?.failure_modes?.split("\n")[0]?.trim() ??
+    metadata?.acceptance_criteria?.split("\n")[0]?.trim() ??
+    "";
+  const modalitySummary = summarizeModalityRequirements(
+    descriptor?.modalities ?? metadata?.modalities,
+  );
+  return [baseSummary, modalitySummary].filter(Boolean).join(" • ");
+}
+
 export function deriveFlowRecommendations(flow: FlowPreset): string[] {
   const recommendations: string[] = [];
   const nodes = new Set(flow.nodeIds);
@@ -3388,6 +3581,13 @@ function deriveCoachInsights(metadata?: PromptMetadata): CoachInsight[] {
       detail: metadata.combines_with.join(", "),
     });
   }
+  const modalitySummary = summarizeModalityRequirements(metadata.modalities);
+  if (modalitySummary) {
+    insights.push({
+      title: "Modalities",
+      detail: modalitySummary,
+    });
+  }
   if (metadata.composition_steps?.length) {
     insights.push({
       title: "Composition steps",
@@ -3427,30 +3627,9 @@ function buildInitialNodeParams(
 ): Record<string, Record<string, unknown>> {
   const result: Record<string, Record<string, unknown>> = {};
   for (const nodeId of preset.nodeIds) {
-    const descriptor = resolveBlockDescriptor(nodeId, metadataMap);
-    const metadata =
-      (descriptor?.metadataId ? metadataMap.get(descriptor.metadataId) : undefined) ??
-      metadataMap.get(nodeId);
-    if (metadata?.slots) {
-      result[nodeId] = {};
-      for (const slot of metadata.slots) {
-        if (slot?.name) {
-          result[nodeId][slot.name] = slot.default ?? (slot.type === "number" ? 0 : "");
-        }
-      }
-    }
-
-    if (isRagBlock(nodeId)) {
-      result[nodeId] = {
-        ...(result[nodeId] ?? {}),
-        ...RAG_DEFAULT_PARAMS,
-      };
-    }
-    if (isApprovalBlock(nodeId)) {
-      result[nodeId] = {
-        ...(result[nodeId] ?? {}),
-        ...APPROVAL_DEFAULT_PARAMS,
-      };
+    const defaults = buildDefaultParamsForBlock(nodeId, metadataMap);
+    if (Object.keys(defaults).length > 0) {
+      result[nodeId] = defaults;
     }
   }
   return result;

@@ -8,6 +8,8 @@ export type BlockCategory =
   | "Evaluation"
   | string;
 
+import type { ModalityRequirement } from "@/types/prompt-metadata";
+
 export interface BlockDescriptor {
   id: string;
   name: string;
@@ -16,6 +18,7 @@ export interface BlockDescriptor {
   status: "available" | "planned";
   metadataId?: string;
   references?: string[];
+  modalities?: ModalityRequirement[];
 }
 
 export const blockCatalog: BlockDescriptor[] = [
@@ -115,6 +118,75 @@ export const blockCatalog: BlockDescriptor[] = [
     status: "available",
     metadataId: "thinking-with-tables",
     references: ["prompts/thinking-with-tables.yaml"],
+  },
+  {
+    id: "audio-timeline-ingest",
+    name: "Audio Timeline Ingest",
+    category: "Structure",
+    description:
+      "Upload voice notes or interviews, annotate key beats, and emit a structured audio timeline for downstream reasoning.",
+    status: "available",
+    modalities: [
+      {
+        modality: "audio",
+        label: "Audio capture",
+        description: "Provide source audio alongside annotated beats and speakers.",
+        payloads: [
+          {
+            type: "audio_timeline",
+            label: "Timeline annotations",
+            description: "Markers with start/end timestamps, speaker tags, and narrative notes.",
+            schema: "schema://modalities/audio-timeline",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "video-event-graph",
+    name: "Video Event Graph",
+    category: "Structure",
+    description:
+      "Break a video into semantic events and link them with causal/temporal edges for reasoning blocks to traverse.",
+    status: "available",
+    modalities: [
+      {
+        modality: "video",
+        label: "Video semantics",
+        description: "Define shot-level or frame-level events with metadata and relationships.",
+        payloads: [
+          {
+            type: "video_event_graph",
+            label: "Event graph",
+            description: "Nodes with timestamps and optional metadata connected by directed relations.",
+            schema: "schema://modalities/video-event-graph",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "scene-graph-builder",
+    name: "Scene Graph Builder",
+    category: "Structure",
+    description:
+      "Capture spatial relationships between actors, objects, and context for 3D or complex visual scenes.",
+    status: "available",
+    modalities: [
+      {
+        modality: "three_d",
+        label: "3D layout",
+        description: "Model scene nodes and labeled relationships for downstream simulation or reasoning.",
+        payloads: [
+          {
+            type: "scene_graph",
+            label: "Scene graph",
+            description: "Nodes with typed attributes linked by labeled relationships (e.g. looks_at, adjacent_to).",
+            schema: "schema://modalities/scene-graph",
+          },
+        ],
+      },
+    ],
   },
   {
     id: "psa",

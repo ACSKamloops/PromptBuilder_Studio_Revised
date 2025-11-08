@@ -69,10 +69,16 @@ The Studio’s block library mirrors Zapier/Make but encodes Prompt‑Science de
   IO: `{ image } → { table }`. Guardrails: require axis labels + totals validation.
 - **Data Analysis Review** — `prompts/data-analysis-review.yaml`  
   IO: `{ dataset, question } → { findings, acceptance }`.
-- **Caption-Assisted Reasoning** — `prompts/caption-assisted-reasoning.yaml`  
+- **Caption-Assisted Reasoning** — `prompts/caption-assisted-reasoning.yaml`
   IO: `{ image } → { text }`.
-- **Spell-Out Adjacency List** — `prompts/spell-out-adjacency-list.yaml`  
+- **Spell-Out Adjacency List** — `prompts/spell-out-adjacency-list.yaml`
   IO: `{ text } → { graph }` for Graph-of-Thought scaffolding.
+- **Audio Timeline Ingest** — block id `audio-timeline-ingest`
+  Purpose: capture waveforms + speaker beats before reasoning. IO: `{ audio, annotations[] } → { timeline }`.
+- **Video Event Graph** — block id `video-event-graph`
+  Purpose: encode video segments + causal links. IO: `{ video, events[], edges[] } → { eventGraph }`.
+- **Scene Graph Builder** — block id `scene-graph-builder`
+  Purpose: model spatial relationships for 3D/visual scenes. IO: `{ nodes[], relationships[] }`.
 
 ## Governance, Safety & HITL
 - **Approval Gate** — block id `approval-gate`  
