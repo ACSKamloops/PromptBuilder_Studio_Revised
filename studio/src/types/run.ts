@@ -24,7 +24,9 @@ export interface RunRecord {
   costUsd: number;
   usage: TokenUsage;
   manifest: RunManifest;
-  gatingDecisions: HybridDecisionTelemetry[];
+  gatingDecisions?: HybridDecisionTelemetry[];
+  verification?: {
+    averageConfidence: number;
+  };
   message: string;
 }
-

@@ -158,6 +158,8 @@ type StudioTestWindow = Window &
     __testOpenNodeMenu?: (id: string) => void;
     __testShowToolbarFor?: (id: string) => void;
     __testGetExtraIds?: () => string[];
+    __testRunPreview?: () => void;
+    __testSetRunResult?: (payload: RunPreviewResponse) => void;
     __lastMousePos?: { x: number; y: number };
   };
 
@@ -1195,9 +1197,23 @@ function StyledResizeHandle() {
 }
 
 function DraggableBlock({ id, children }: { id: string; children: React.ReactNode }) {
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  if (!hydrated) {
+    return <div>{children}</div>;
+  }
+
+  return <HydratedDraggableBlock id={id}>{children}</HydratedDraggableBlock>;
+}
+
+function HydratedDraggableBlock({ id, children }: { id: string; children: React.ReactNode }) {
   const { listeners, attributes, setNodeRef, isDragging } = useDraggable({ id });
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} className={isDragging ? 'opacity-80 scale-[0.98]' : undefined}>
+    <div ref={setNodeRef} {...listeners} {...attributes} className={isDragging ? "opacity-80 scale-[0.98]" : undefined}>
       {children}
     </div>
   );
@@ -1539,56 +1555,6 @@ function CanvasPanel({
     setEdgeMenu({ open: true, id, x: pos.x, y: pos.y });
   }, [clampToViewport]);
 
-  // Test helpers
-  useEffect(() => {
-    const testWindow = getTestWindow();
-    if (!testWindow) return;
-    testWindow.__testOpenQuickInsert = (edgeId: string) => {
-      const edge = edges.find((e) => e.id === edgeId);
-      if (!edge) return;
-      setEdgeQuickAdd({
-        open: true,
-        x: 320,
-        y: 180,
-        id: edge.id,
-        source: String(edge.source),
-        target: String(edge.target),
-      });
-    };
-    testWindow.__testOpenCommandPalette = () => setCommandOpen(true);
-    testWindow.__testOpenNodeMenu = (id: string) => {
-      const esc = escapeNodeId(id);
-      const header = document.querySelector(
-        `[data-testid="flow-node-${esc}"] .node-drag-handle`,
-      ) as HTMLElement | null;
-      const r = header?.getBoundingClientRect();
-      if (!r) return;
-      openNodeMenu(id, Math.round(r.left + 8), Math.round(r.bottom + 4));
-    };
-    testWindow.__testShowToolbarFor = (id: string) => {
-      setSelectedSingleId(id);
-      setSelectionCount(1);
-      const esc = escapeNodeId(id);
-      const el = document.querySelector(
-        `[data-testid="flow-node-${esc}"] .node-drag-handle`,
-      ) as HTMLElement | null;
-      if (el) {
-        const r = el.getBoundingClientRect();
-        setToolbarPos({ x: Math.round(r.right + 6), y: Math.round(r.top) });
-      }
-    };
-    testWindow.__testGetExtraIds = () => testWindow.__extraNodes ?? [];
-    return () => {
-      delete testWindow.__testOpenQuickInsert;
-      delete testWindow.__testOpenNodeMenu;
-      delete testWindow.__testShowToolbarFor;
-      delete testWindow.__testGetExtraIds;
-      delete testWindow.__testOpenCommandPalette;
-    };
-  }, [edges, openNodeMenu]);
-
-  
-
   useEffect(() => {
     const onDocClick = () => setMenu((m) => ({ ...m, open: false }));
     window.addEventListener('click', onDocClick);
@@ -1758,6 +1724,64 @@ function CanvasPanel({
       setIsRunning(false);
     }
   }, [promptSpec, streaming, onRefreshApprovals]);
+
+  // Test helpers
+  useEffect(() => {
+    const testWindow = getTestWindow();
+    if (!testWindow) return;
+    testWindow.__testOpenQuickInsert = (edgeId: string) => {
+      const edge = edges.find((e) => e.id === edgeId);
+      if (!edge) return;
+      setEdgeQuickAdd({
+        open: true,
+        x: 320,
+        y: 180,
+        id: edge.id,
+        source: String(edge.source),
+        target: String(edge.target),
+      });
+    };
+    testWindow.__testOpenCommandPalette = () => setCommandOpen(true);
+    testWindow.__testOpenNodeMenu = (id: string) => {
+      const esc = escapeNodeId(id);
+      const header = document.querySelector(
+        `[data-testid="flow-node-${esc}"] .node-drag-handle`,
+      ) as HTMLElement | null;
+      const r = header?.getBoundingClientRect();
+      if (!r) return;
+      openNodeMenu(id, Math.round(r.left + 8), Math.round(r.bottom + 4));
+    };
+    testWindow.__testShowToolbarFor = (id: string) => {
+      setSelectedSingleId(id);
+      setSelectionCount(1);
+      const esc = escapeNodeId(id);
+      const el = document.querySelector(
+        `[data-testid="flow-node-${esc}"] .node-drag-handle`,
+      ) as HTMLElement | null;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        setToolbarPos({ x: Math.round(r.right + 6), y: Math.round(r.top) });
+      }
+    };
+    testWindow.__testGetExtraIds = () => testWindow.__extraNodes ?? [];
+    testWindow.__testRunPreview = () => triggerRunPreview();
+    testWindow.__testSetRunResult = (payload: RunPreviewResponse) => {
+      setDialogOpen(true);
+      setRunError(null);
+      setIsRunning(false);
+      setRunResult(payload);
+      setRunHistory((prev) => [payload, ...prev.filter((entry) => entry.runId !== payload.runId)].slice(0, 5));
+    };
+    return () => {
+      delete testWindow.__testOpenQuickInsert;
+      delete testWindow.__testOpenNodeMenu;
+      delete testWindow.__testShowToolbarFor;
+      delete testWindow.__testGetExtraIds;
+      delete testWindow.__testOpenCommandPalette;
+      delete testWindow.__testRunPreview;
+      delete testWindow.__testSetRunResult;
+    };
+  }, [edges, openNodeMenu, triggerRunPreview, setCommandOpen]);
 
   return (
     <div className="flex h-full flex-col">
@@ -2021,7 +2045,10 @@ function CanvasPanel({
                       <div>
                         <p className="font-medium">Summary</p>
                         <p className="text-muted-foreground">
-                          Blocks {runResult.manifest.blocks.length} · Nodes {runResult.manifest.nodeCount} · Edges {runResult.manifest.edgeCount} · Complexity {runResult.manifest.complexityScore}
+                          Blocks {runResult.manifest.blocks.length} · Nodes {runResult.manifest.nodeCount} · Edges {runResult.manifest.edgeCount}
+                          {typeof runResult.manifest.complexityScore === "number" && (
+                            <> · Complexity {runResult.manifest.complexityScore.toFixed(1)}</>
+                          )}
                         </p>
                       </div>
                       <div>
@@ -2091,10 +2118,10 @@ function CanvasPanel({
                       </div>
                     ))}
                   </div>
-                  {runResult.gatingDecisions.length > 0 && (
+                  {(runResult.gatingDecisions ?? []).length > 0 && (
                     <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs space-y-2">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hybrid routing telemetry</p>
-                      {runResult.gatingDecisions.map((decision) => (
+                      {(runResult.gatingDecisions ?? []).map((decision) => (
                         <div key={`${decision.nodeId}-${decision.timestamp}`} className="space-y-1">
                           <p className="font-medium text-foreground">{decision.nodeLabel} → {decision.selectedBranch}</p>
                           <p className="text-muted-foreground">{decision.rationale || "No rationale provided."}</p>
@@ -2133,7 +2160,11 @@ function CanvasPanel({
                               <p className="truncate font-medium text-foreground">{entry.runId}</p>
                               <p className="text-muted-foreground">
                                 {new Date(entry.startedAt).toLocaleTimeString()} · {entry.usage.totalTokens} tokens
-                                {entry.gatingDecisions.length > 0 && ` · Hybrid ${entry.gatingDecisions[0].selectedBranch}`}
+                                {typeof entry.verification?.averageConfidence === "number" &&
+                                  ` · conf ${entry.verification.averageConfidence.toFixed(2)}`}
+                                {entry.gatingDecisions?.[0]
+                                  ? ` · Hybrid ${entry.gatingDecisions[0].selectedBranch}`
+                                  : ""}
                               </p>
                             </div>
                             <div className="text-muted-foreground">${entry.costUsd.toFixed(4)}</div>

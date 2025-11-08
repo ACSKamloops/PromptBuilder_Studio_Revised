@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2025-11-08T20:13:30.210Z",
+  "generatedAt": "2025-11-08T23:25:25.141Z",
   "slot_controls": {
     "text": {
       "component": "TextInput"
@@ -25,15 +25,6 @@
       "props": {
         "min": 0
       }
-    },
-    "audio_timeline": {
-      "component": "AudioTimelineEditor"
-    },
-    "video_event_graph": {
-      "component": "VideoEventGraphBuilder"
-    },
-    "scene_graph": {
-      "component": "SceneGraphBuilder"
     },
     "json": {
       "component": "CodeInput",

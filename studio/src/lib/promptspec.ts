@@ -76,10 +76,15 @@ export function buildPromptSpec(
 
   const edges: PromptSpecEdge[] = [];
   if (preset.edges && preset.edges.length > 0) {
-    preset.edges.forEach((edge, index) => {
-      edges.push(mapFlowEdgeToPromptSpec(edge, index));
-    });
-  } else {
+    let mappedIndex = 0;
+    for (const edge of preset.edges) {
+      if (!isValidFlowEdge(edge, preset.nodeIds)) continue;
+      edges.push(mapFlowEdgeToPromptSpec(edge, mappedIndex));
+      mappedIndex += 1;
+    }
+  }
+
+  if (edges.length === 0) {
     for (let i = 0; i < preset.nodeIds.length - 1; i += 1) {
       edges.push({
         id: `${preset.nodeIds[i]}→${preset.nodeIds[i + 1]}`,
@@ -103,10 +108,12 @@ export function buildPromptSpec(
 }
 
 function mapFlowEdgeToPromptSpec(edge: FlowEdge, index: number): PromptSpecEdge {
+  const source = edge.source;
+  const target = edge.target;
   return {
-    id: edge.label ? `${edge.source}→${edge.target}:${edge.label}` : `${edge.source}→${edge.target}#${index + 1}`,
-    from: edge.source,
-    to: edge.target,
+    id: edge.label ? `${source}→${target}:${edge.label}` : `${source}→${target}#${index + 1}`,
+    from: source,
+    to: target,
     label: edge.label,
     kind: edge.kind ?? (edge.branch ? "branch" : "default"),
     condition: edge.condition,
@@ -119,4 +126,14 @@ function mapFlowEdgeToPromptSpec(edge: FlowEdge, index: number): PromptSpecEdge 
         }
       : undefined,
   };
+}
+
+function isValidFlowEdge(edge: FlowEdge | undefined, nodeIds: string[]): edge is FlowEdge {
+  if (!edge || typeof edge.source !== "string" || typeof edge.target !== "string") {
+    return false;
+  }
+  if (!nodeIds.includes(edge.source) || !nodeIds.includes(edge.target)) {
+    return false;
+  }
+  return true;
 }

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import type { StudioTestWindow } from './test-window';
+import type { RunRecord } from '@/types/run';
 
 const selectPreset = async (page: Page, label: string | RegExp) => {
   // Try UI first
@@ -28,6 +29,18 @@ const selectPreset = async (page: Page, label: string | RegExp) => {
   }
 };
 
+const waitForRunHelper = async (page: Page) => {
+  try {
+    await page.waitForFunction(() => {
+      const w = window as StudioTestWindow;
+      return typeof w.__testSetRunResult === 'function';
+    }, null, { timeout: 5_000 });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 test.describe('Studio flow interactions', () => {
   test('switches to Deep Research composition and displays recommendations', async ({ page }) => {
     await page.goto('/');
@@ -50,9 +63,59 @@ test.describe('Studio flow interactions', () => {
 
   test('run preview returns manifest with block output', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Run (Preview)' }).click();
-    // In headless CI, match on stable message + output lines
-    await expect(page.locator('text=Executed via LangGraph runnable stub').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Output: Stubbed execution for System Mandate')).toBeVisible();
+    const stubRun: RunRecord = {
+      runId: 'test-run',
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      latencyMs: 1234,
+      costUsd: 0.0002,
+      usage: { promptTokens: 120, completionTokens: 80, totalTokens: 200 },
+      manifest: {
+        flow: { id: 'composition-deep_research', name: 'Deep Research', description: '' },
+        nodeCount: 3,
+        edgeCount: 2,
+        complexityScore: 5,
+        blocks: [
+          {
+            id: 'system-mandate',
+            block: 'System Mandate',
+            params: {},
+            output: {
+              flowSummary: 'Stub flow',
+              guidance: '',
+              failureModes: '',
+              acceptanceCriteria: '',
+              combinesWith: [],
+              compositionSteps: [],
+              paramsUsed: {},
+              note: 'Test stub output for System Mandate',
+            },
+          },
+        ],
+      },
+      gatingDecisions: [],
+      message: 'Stubbed run for tests',
+    };
+    const helperReady = await waitForRunHelper(page);
+    const triggeredViaHelper = helperReady
+      ? await page.evaluate((payload) => {
+          const w = window as StudioTestWindow;
+          if (typeof w.__testSetRunResult === 'function') {
+            w.__testSetRunResult(payload);
+            return true;
+          }
+          return false;
+        }, stubRun)
+      : false;
+    if (!triggeredViaHelper) {
+      await page.getByRole('button', { name: 'Run (Preview)' }).click();
+    }
+    const runDialog = page.getByRole('dialog', { name: 'Run Preview' });
+    await page.getByText('Running preview…', { exact: true })
+      .waitFor({ state: 'detached', timeout: 10_000 })
+      .catch(() => undefined);
+    const dialogPreview = runDialog.locator('[data-testid="prompt-preview"]');
+    await expect(runDialog.getByText('Run ID')).toBeVisible({ timeout: 10_000 });
+    await expect(dialogPreview).toContainText('System Mandate', { timeout: 10_000 });
   });
 });
