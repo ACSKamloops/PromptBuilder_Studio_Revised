@@ -1,5 +1,6 @@
 import type { PromptSpec } from "@/lib/promptspec";
 import type { LangGraphRunResult } from "@/lib/runtime/langgraph-runner";
+import type { RunAnalytics } from "@/types/run";
 
 export interface TokenUsage {
   promptTokens: number;
@@ -16,6 +17,7 @@ export interface ProviderRunResult {
   usage: TokenUsage;
   manifest: LangGraphRunResult["manifest"];
   message: string;
+  analytics?: RunAnalytics;
 }
 
 export type RunStreamEvent =

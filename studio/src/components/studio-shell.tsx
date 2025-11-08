@@ -68,7 +68,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { DndContext, DragOverlay, useDraggable } from "@dnd-kit/core";
-import { Info } from "lucide-react";
+import { Gauge, GitBranch, Info, ShieldCheck, Trophy } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -109,6 +109,40 @@ const cloneApprovalDefaults = (): typeof APPROVAL_DEFAULT_PARAMS => ({
   ...APPROVAL_DEFAULT_PARAMS,
   approval_assignees: [],
 });
+
+const BENCHMARK_TONE: Record<string, string> = {
+  gold: "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+  silver: "border-slate-400/40 bg-slate-400/10 text-slate-700 dark:text-slate-200",
+  experimental: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-200",
+  baseline: "border-primary/30 bg-primary/5 text-primary",
+};
+
+const benchmarkBadgeTone = (tier?: string) => BENCHMARK_TONE[tier ?? "baseline"];
+
+type RouterRoute = { when: string; to: string; label?: string };
+
+const defaultRouterRoutes = (): RouterRoute[] => [
+  { when: "payload.score >= 0.8", to: "verification" },
+  { when: "payload.score >= 0.5", to: "human-review" },
+  { when: "default", to: "fallback" },
+];
+
+const LOOP_DEFAULT = { concurrency: 3, stopOnError: false } as const;
+const PARALLEL_DEFAULT_AGGREGATE = "rank+merge" as const;
+const RETRY_DEFAULT = { timeoutMs: 15000, retries: 2, backoff: "expo" as const };
+
+const verdictTone = (verdict: string) => {
+  switch (verdict) {
+    case "ok":
+      return "text-emerald-600 dark:text-emerald-300";
+    case "warning":
+      return "text-amber-600 dark:text-amber-300";
+    case "error":
+      return "text-destructive";
+    default:
+      return "text-muted-foreground";
+  }
+};
 
 type RunPreviewResponse = RunRecord;
 
@@ -488,10 +522,9 @@ const promptSpec = useMemo(() => {
     const meta = fromCatalog?.metadataId
       ? metadataById.get(fromCatalog.metadataId)
       : metadataById.get(baseId);
-    const summary = composeBlockSummary(fromCatalog, meta);
     return {
       label: fromCatalog?.name ?? meta?.title ?? baseId,
-      summary,
+      summary: meta?.when_to_use?.split('\n')[0] ?? fromCatalog?.description,
       category: fromCatalog?.category ?? meta?.category ?? 'Structure',
     };
   }, [metadataById]);
@@ -673,58 +706,36 @@ const promptSpec = useMemo(() => {
         };
 
         if (snap?.extras?.length) {
-          const extrasWithContext: Array<{
-            ex: {
-              id: string;
-              baseId?: string;
-              position?: { x: number; y: number };
-              label?: string;
-              params?: Record<string, unknown>;
-            };
-            id: string;
-            baseId: string;
-            descriptor?: BlockDescriptor;
-            metadata?: PromptMetadata;
-          }> = [];
-
-          for (const ex of snap.extras) {
-            if (!ex?.id) continue;
-            const baseId = ex.baseId ?? (ex.id.includes('#') ? ex.id.split('#')[0] : ex.id);
+          const rebuilt: FlowNode[] = snap.extras.map((ex) => {
+            const baseId = ex.baseId ?? (ex.id?.includes('#') ? ex.id.split('#')[0] : ex.id);
             const descriptor = resolveBlockDescriptor(baseId, metadataById);
             const metadata = descriptor?.metadataId
               ? metadataById.get(descriptor.metadataId)
               : metadataById.get(baseId);
-            extrasWithContext.push({ ex, id: ex.id, baseId, descriptor, metadata });
-          }
-
-          const rebuilt: FlowNode[] = extrasWithContext.map(({ ex, id, baseId, descriptor, metadata }) => ({
-            id,
-            position: ex.position ?? { x: 240, y: 160 },
-            type: 'default',
-            data: {
-              label: ex.label ?? descriptor?.name ?? metadata?.title ?? baseId,
-              summary: composeBlockSummary(descriptor, metadata),
-              category: descriptor?.category ?? metadata?.category,
-              metadataId: metadata?.id ?? descriptor?.metadataId ?? baseId,
-            },
-          } as FlowNode));
-
+            const id = ex.id;
+            return {
+              id,
+              position: ex.position ?? { x: 240, y: 160 },
+              type: 'default',
+              data: {
+                label: ex.label ?? descriptor?.name ?? metadata?.title ?? baseId,
+                summary:
+                  descriptor?.description ??
+                  metadata?.when_to_use ??
+                  metadata?.failure_modes ??
+                  metadata?.acceptance_criteria ??
+                  '',
+                category: descriptor?.category ?? metadata?.category,
+                metadataId: metadata?.id ?? descriptor?.metadataId ?? baseId,
+              },
+            } as FlowNode;
+          });
           setExtraNodes(rebuilt);
           setNodeParams((prev) => {
             const next = { ...prev } as Record<string, Record<string, unknown>>;
-            for (const entry of extrasWithContext) {
-              const restored =
-                entry.ex.params && typeof entry.ex.params === "object"
-                  ? (entry.ex.params as Record<string, unknown>)
-                  : {};
-              const defaults = buildDefaultParamsForBlock(entry.baseId, metadataById);
-              const combined = {
-                ...(Object.keys(defaults).length > 0 ? defaults : {}),
-                ...(next[entry.id] ?? {}),
-                ...restored,
-              } as Record<string, unknown>;
-              if (Object.keys(combined).length > 0) {
-                next[entry.id] = combined;
+            for (const ex of snap.extras) {
+              if (ex.id && ex.params) {
+                next[ex.id] = { ...(next[ex.id] ?? {}), ...ex.params };
               }
             }
             return next;
@@ -782,11 +793,41 @@ const promptSpec = useMemo(() => {
         ? metadataById.get(descriptor.metadataId)
         : metadataById.get(baseId);
 
-      const defaultParams = buildDefaultParamsForBlock(baseId, metadataById);
-      if (Object.keys(defaultParams).length > 0) {
+      const slotDefaults = metadata?.slots
+        ? Object.fromEntries(
+            (metadata.slots ?? []).map((s) => [s.name, s.default ?? (s.type === "number" ? 0 : "")]),
+          )
+        : {};
+      const ragDefaults = isRagBlock(baseId) ? { ...RAG_DEFAULT_PARAMS } : {};
+      const approvalDefaults = isApprovalBlock(baseId) ? { ...APPROVAL_DEFAULT_PARAMS } : {};
+      const routerDefaults = baseId === "control-router" ? { router_routes: defaultRouterRoutes() } : {};
+      const loopDefaults =
+        baseId === "control-loop"
+          ? { loop_concurrency: LOOP_DEFAULT.concurrency, loop_stopOnError: LOOP_DEFAULT.stopOnError }
+          : {};
+      const parallelDefaults =
+        baseId === "control-parallel" ? { parallel_aggregate: PARALLEL_DEFAULT_AGGREGATE } : {};
+      const retryDefaults =
+        baseId === "control-retry"
+          ? {
+              retry_timeoutMs: RETRY_DEFAULT.timeoutMs,
+              retry_retries: RETRY_DEFAULT.retries,
+              retry_backoff: RETRY_DEFAULT.backoff,
+            }
+          : {};
+      const initial = {
+        ...slotDefaults,
+        ...ragDefaults,
+        ...approvalDefaults,
+        ...routerDefaults,
+        ...loopDefaults,
+        ...parallelDefaults,
+        ...retryDefaults,
+      };
+      if (Object.keys(initial).length > 0) {
         setNodeParams((prev) => ({
           ...prev,
-          [uid]: defaultParams,
+          [uid]: initial,
         }));
       }
 
@@ -798,7 +839,12 @@ const promptSpec = useMemo(() => {
           type: "default",
           data: {
             label: descriptor?.name ?? metadata?.title ?? baseId,
-            summary: composeBlockSummary(descriptor, metadata),
+            summary:
+              descriptor?.description ??
+              metadata?.when_to_use ??
+              metadata?.failure_modes ??
+              metadata?.acceptance_criteria ??
+              "",
             category: descriptor?.category ?? metadata?.category,
             metadataId: metadata?.id ?? descriptor?.metadataId ?? baseId,
           },
@@ -1175,17 +1221,37 @@ function LibraryPanel({
       "user-task": "Define Task",
       "rag-retriever": "Retrieve Sources (RAG)",
       "exclusion-check": "Check Exclusions",
-      "cov": "Verify Facts (CoV)",
       "table-formatter": "Format Output",
+      "chain-of-thought": "Deliberate Reasoning (CoT)",
+      "tree-of-thought": "Explore Branches (ToT)",
+      "graph-of-thought": "Graph of Thought",
+      "panel-of-experts": "Panel Debate",
+      "multi-perspective-simulation": "Perspective Simulation",
+      "context-aware-decomposition": "Decompose Mandate",
+      "cov": "Verify Facts (CoV)",
+      "cov-over-rag": "Verify Citations",
+      "self-consistency": "Self-Consistency Vote",
+      "thinking-with-tables": "Structure in Tables",
+      "charts-of-thought": "Charts of Thought",
+      "data-analysis-review": "Data Review",
+      "caption-assisted-reasoning": "Caption-Assisted Reasoning",
+      "spell-out-adjacency-list": "Spell-Out Graph",
+      "control-router": "Branch Router",
+      "control-loop": "Loop / Map",
+      "control-parallel": "Parallel Join",
+      "control-retry": "Retry / Timeout",
       "psa": "Robustness Check",
     };
     return map[id] ?? fallback;
   };
-  const groups: Array<{ title: string; match: (cat?: string) => boolean }> = [
-    { title: "Mandate & Planning", match: (c) => (c ?? '').toLowerCase() === 'mandate' || (c ?? '').toLowerCase() === 'strategy' },
-    { title: "Research Blocks", match: (c) => (c ?? '').toLowerCase() === 'grounding' || (c ?? '').toLowerCase() === 'structure' },
-    { title: "Validation Blocks", match: (c) => (c ?? '').toLowerCase() === 'verification' || (c ?? '').toLowerCase() === 'evaluation' },
-    { title: "Formatting & Export", match: (c) => (c ?? '').toLowerCase() === 'output' },
+  const toCategory = (value?: string) => (value ?? "").toLowerCase();
+  const groups: Array<{ title: string; categories: string[] }> = [
+    { title: "Mandate & Planning", categories: ["mandate", "strategy"] },
+    { title: "Grounding & Memory", categories: ["grounding", "structure"] },
+    { title: "Reasoning & Decomposition", categories: ["reasoning", "planning"] },
+    { title: "Verification & Guardrails", categories: ["verification", "evaluation", "hitl"] },
+    { title: "Modality & Output", categories: ["modality", "output"] },
+    { title: "Control & Parallelism", categories: ["control", "policy"] },
   ];
   return (
     <>
@@ -1200,17 +1266,27 @@ function LibraryPanel({
       <Separator />
       <ScrollArea className="flex-1 px-2">
         <div className="space-y-6 py-3">
-          {groups.map((g) => (
-            <div key={g.title} className="space-y-2">
-              <div className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.title}</div>
-              {blockCatalog
-                .filter((b) => g.match((b.category as string) ?? ''))
-                .filter((b) => {
-                  const meta = b.metadataId ? metadataMap.get(b.metadataId) : undefined;
-                  const hay = `${b.name} ${meta?.when_to_use ?? ''} ${meta?.title ?? ''}`.toLowerCase();
-                  return hay.includes(query.toLowerCase());
-                })
-                .map((block) => {
+          {groups.map((g) => {
+            const entries = blockCatalog
+              .filter((b) => g.categories.includes(toCategory(b.category as string)))
+              .filter((b) => {
+                const meta = b.metadataId ? metadataMap.get(b.metadataId) : undefined;
+                const haystack = [
+                  b.name,
+                  meta?.when_to_use ?? "",
+                  meta?.title ?? "",
+                  ...(b.guardrails ?? []),
+                  ...((b.benchmarks ?? []).flatMap((item) => [item.name, item.score, item.note ?? ""])),
+                ]
+                  .join(" ")
+                  .toLowerCase();
+                return haystack.includes(query.toLowerCase());
+              });
+            if (entries.length === 0) return null;
+            return (
+              <div key={g.title} className="space-y-2">
+                <div className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.title}</div>
+                {entries.map((block) => {
                   const metadata = block.metadataId ? metadataMap.get(block.metadataId) : undefined;
                   return (
               <div key={block.id} className="relative">
@@ -1238,6 +1314,40 @@ function LibraryPanel({
                       ? metadata.when_to_use.split("\n")[0]
                       : block.description}
                   </CardDescription>
+                  {block.guardrails?.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {block.guardrails.map((guard) => (
+                        <Badge
+                          key={`${block.id}-guard-${guard}`}
+                          variant="outline"
+                          className={cn(
+                            "flex items-center gap-1 border-emerald-500/30 bg-emerald-500/10 text-[11px] font-medium text-emerald-700 dark:text-emerald-200",
+                          )}
+                        >
+                          <ShieldCheck className="h-3 w-3" />
+                          <span className="truncate">{guard}</span>
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                  {block.benchmarks?.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {block.benchmarks.map((bench) => (
+                        <Badge
+                          key={`${block.id}-bench-${bench.name}`}
+                          variant="secondary"
+                          className={cn(
+                            "flex items-center gap-1 text-[11px] font-medium",
+                            benchmarkBadgeTone(bench.tier),
+                          )}
+                        >
+                          <Trophy className="h-3 w-3" />
+                          <span className="truncate">{bench.name}</span>
+                          <span className="font-semibold text-foreground">{bench.score}</span>
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
                   {metadata && metadata.when_to_use && (
                     <p className="text-[11px] leading-relaxed text-muted-foreground">
                       <span className="font-medium text-foreground">Use when:</span>{" "}
@@ -1264,8 +1374,9 @@ function LibraryPanel({
               </div>
                   );
                 })}
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       </ScrollArea>
     </div>
@@ -1989,6 +2100,104 @@ function CanvasPanel({
                     </div>
                     <p className="text-xs text-muted-foreground">{runResult.message}</p>
                   </div>
+                  {runResult.analytics?.metrics?.length ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <Gauge className="h-4 w-4 text-foreground" />
+                        Run metrics
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        {runResult.analytics.metrics.map((metric) => (
+                          <div
+                            key={metric.id}
+                            className="rounded-md border border-border/60 bg-card/60 p-3"
+                          >
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                              {metric.label}
+                            </p>
+                            <p className="text-lg font-semibold text-foreground">{metric.value}</p>
+                            {metric.detail ? (
+                              <p className="text-[11px] text-muted-foreground">{metric.detail}</p>
+                            ) : null}
+                            {metric.delta ? (
+                              <p className="text-[11px] text-muted-foreground">{metric.delta}</p>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {runResult.analytics?.benchmarks?.length ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <Trophy className="h-4 w-4 text-foreground" />
+                        Benchmarks
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {runResult.analytics.benchmarks.map((bench) => (
+                          <Badge
+                            key={bench.id}
+                            variant="secondary"
+                            className={cn(
+                              "flex items-center gap-1 text-[11px] font-medium",
+                              benchmarkBadgeTone(bench.tier),
+                            )}
+                          >
+                            <span>{bench.name}</span>
+                            <span className="font-semibold text-foreground">{bench.score}</span>
+                            {bench.delta ? (
+                              <span className="text-[10px] text-muted-foreground">{bench.delta}</span>
+                            ) : null}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {runResult.analytics?.provenance?.length ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <GitBranch className="h-4 w-4 text-foreground" />
+                        Provenance trail
+                      </div>
+                      <div className="space-y-2">
+                        {runResult.analytics.provenance.map((item) => (
+                          <div
+                            key={item.nodeId}
+                            className="space-y-2 rounded-lg border border-border/70 bg-card p-3 text-xs leading-relaxed"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="font-mono text-[11px]">
+                                  {item.nodeId}
+                                </Badge>
+                                <span className="text-sm font-semibold text-foreground">{item.block}</span>
+                              </div>
+                              <span className={cn("text-xs font-semibold uppercase tracking-wide", verdictTone(item.verdict))}>
+                                {item.verdict === "ok"
+                                  ? "Verified"
+                                  : item.verdict === "warning"
+                                  ? "Needs attention"
+                                  : "Failed"}
+                              </span>
+                            </div>
+                            <p className="text-muted-foreground">{item.summary}</p>
+                            {item.sources?.length ? (
+                              <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                                {item.sources.map((source, idx) => (
+                                  <span
+                                    key={`${item.nodeId}-src-${idx}`}
+                                    className="rounded-full border border-border/50 bg-background/80 px-2 py-0.5"
+                                  >
+                                    {source.label}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     {runResult.manifest.blocks.map((block) => (
                       <div
@@ -2054,7 +2263,9 @@ function CanvasPanel({
                             <div className="min-w-0">
                               <p className="truncate font-medium text-foreground">{entry.runId}</p>
                               <p className="text-muted-foreground">
-                                {new Date(entry.startedAt).toLocaleTimeString()} · {entry.usage.totalTokens} tokens
+                                {new Date(entry.startedAt).toLocaleTimeString()} · {entry.analytics?.metrics?.[0]
+                                  ? `${entry.analytics.metrics[0].label}: ${entry.analytics.metrics[0].value}`
+                                  : `${entry.usage.totalTokens} tokens`}
                               </p>
                             </div>
                             <div className="text-muted-foreground">${entry.costUsd.toFixed(4)}</div>
@@ -2680,10 +2891,7 @@ function InspectorPanel({
       status: "available",
       metadataId: metadata?.id,
       references: metadata?.relativePath ? [metadata.relativePath] : undefined,
-      modalities: metadata?.modalities,
     } as const);
-
-  const modalityRequirements = metadata?.modalities ?? effectiveDescriptor.modalities ?? [];
 
   return (
     <div className="flex h-full flex-col">
@@ -2779,7 +2987,7 @@ function InspectorPanel({
             onValueChange={onValueChange}
             blueprint={blueprint}
             ragConnected={ragConnected}
-            modalities={modalityRequirements}
+            modalities={effectiveDescriptor.modalities ?? metadata?.modalities}
           />
           <PromptPreview metadata={metadata} values={values} />
           <FlowSpecView promptSpec={promptSpec} focusedNodeId={selectedBlockId} />
@@ -2862,11 +3070,71 @@ function BlockParameters({
       ? (values.approval_notes as string)
       : APPROVAL_DEFAULT_PARAMS.approval_notes;
 
+  const isRouterNode = baseId === "control-router";
+  const isLoopNode = baseId === "control-loop";
+  const isParallelNode = baseId === "control-parallel";
+  const isRetryNode = baseId === "control-retry";
+
+  const routerRoutes: RouterRoute[] = Array.isArray(values?.router_routes)
+    ? (values.router_routes as RouterRoute[]).map((route) => ({
+        when: typeof route.when === "string" ? route.when : "",
+        to: typeof route.to === "string" ? route.to : "",
+        label: typeof route.label === "string" ? route.label : undefined,
+      }))
+    : defaultRouterRoutes();
+
+  const loopConcurrency =
+    typeof values?.loop_concurrency === "number"
+      ? (values.loop_concurrency as number)
+      : LOOP_DEFAULT.concurrency;
+
+  const loopStopOnError =
+    typeof values?.loop_stopOnError === "boolean"
+      ? (values.loop_stopOnError as boolean)
+      : LOOP_DEFAULT.stopOnError;
+
+  const parallelAggregate =
+    typeof values?.parallel_aggregate === "string"
+      ? (values.parallel_aggregate as string)
+      : PARALLEL_DEFAULT_AGGREGATE;
+
+  const retryTimeout =
+    typeof values?.retry_timeoutMs === "number"
+      ? (values.retry_timeoutMs as number)
+      : RETRY_DEFAULT.timeoutMs;
+
+  const retryRetries =
+    typeof values?.retry_retries === "number"
+      ? (values.retry_retries as number)
+      : RETRY_DEFAULT.retries;
+
+  const retryBackoff =
+    typeof values?.retry_backoff === "string"
+      ? (values.retry_backoff as string)
+      : RETRY_DEFAULT.backoff;
+
   const hasSlots = Boolean(metadata?.slots && metadata.slots.length > 0);
-  const renderingHints = metadata ? deriveRenderingHints(metadata, blueprint) : [];
+  const metadataHints = metadata ? deriveRenderingHints(metadata, blueprint) : [];
+  const manualHints: string[] = [];
+  if (isRouterNode) manualHints.push("Routes evaluate in order; include a default catch-all branch.");
+  if (isParallelNode) manualHints.push("Merge policy controls how parallel branches reconcile their outputs.");
+  if (isLoopNode) manualHints.push("Tune concurrency to balance throughput against rate limits.");
+  if (isRetryNode) manualHints.push("Timeout, retries, and backoff define the guardrail SLA for downstream nodes.");
+  const renderingHints = [...metadataHints, ...manualHints];
   const modalityRequirements = modalities ?? [];
   const modalityState: ModalityState =
     (values?.modalities as ModalityState | undefined) ?? {};
+  const setModalityState = (next: ModalityState) => onValueChange(blockId, "modalities", next);
+  const updateModalityValue = (modality: string, payloadType: string, nextValue: unknown) => {
+    const current = modalityState[modality] ?? {};
+    setModalityState({
+      ...modalityState,
+      [modality]: {
+        ...current,
+        [payloadType]: nextValue,
+      },
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -2919,6 +3187,240 @@ function BlockParameters({
               Controls whether the model can decline when prompts step outside grounded context or policy.
             </p>
           </div>
+        </div>
+      )}
+      {modalityRequirements.length > 0 && (
+        <div className="space-y-3 rounded-lg border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-foreground">Modality requirements</p>
+            <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {modalityRequirements.length} requirement{modalityRequirements.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <ModalityRequirementSection
+            requirements={modalityRequirements}
+            value={modalityState}
+            onChange={(next) => setModalityState(next)}
+          />
+        </div>
+      )}
+      {modalityState.audio?.audio_timeline && (
+        <div className="space-y-2 rounded-lg border border-border bg-muted/10 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Audio timeline annotations
+          </p>
+          <WaveformEditor
+            value={modalityState.audio.audio_timeline}
+            onChange={(next) => updateModalityValue("audio", "audio_timeline", next)}
+          />
+        </div>
+      )}
+      {modalityState.video?.video_event_graph && (
+        <div className="space-y-2 rounded-lg border border-border bg-muted/10 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Video event graph
+          </p>
+          <VideoEventGraphBuilder
+            value={modalityState.video.video_event_graph}
+            onChange={(next) => updateModalityValue("video", "video_event_graph", next)}
+          />
+        </div>
+      )}
+      {modalityState.three_d?.scene_graph && (
+        <div className="space-y-2 rounded-lg border border-border bg-muted/10 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Scene graph
+          </p>
+          <SceneGraphBuilder
+            value={modalityState.three_d.scene_graph}
+            onChange={(next) => updateModalityValue("three_d", "scene_graph", next)}
+          />
+        </div>
+      )}
+      {isRouterNode && (
+        <div className="space-y-3 rounded-lg border border-border bg-muted/10 p-3 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-foreground">Branching rules</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                onValueChange(blockId, "router_routes", [
+                  ...routerRoutes,
+                  { when: "payload.score >= 0.5", to: "next-node" },
+                ])
+              }
+            >
+              Add branch
+            </Button>
+          </div>
+          <p>Routes evaluate from top to bottom. The first match wins; use <code className="font-mono text-[11px]">default</code> for fallback.</p>
+          <div className="space-y-2">
+            {routerRoutes.map((route, index) => (
+              <div
+                key={`${index}-${route.when}-${route.to}`}
+                className="space-y-2 rounded-md border border-border/60 bg-card/60 p-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Branch {index + 1}</span>
+                  <div className="flex items-center gap-2">
+                    {route.when.trim().toLowerCase() === "default" ? (
+                      <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+                        Default
+                      </Badge>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={routerRoutes.length <= 1}
+                      onClick={() => {
+                        if (routerRoutes.length <= 1) return;
+                        const next = routerRoutes.filter((_, i) => i !== index);
+                        onValueChange(
+                          blockId,
+                          "router_routes",
+                          next.length ? next : defaultRouterRoutes(),
+                        );
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-foreground">Condition</Label>
+                  <Input
+                    value={route.when}
+                    placeholder={index === routerRoutes.length - 1 ? "default" : "payload.score >= 0.8"}
+                    onChange={(event) => {
+                      const next = [...routerRoutes];
+                      next[index] = { ...next[index], when: event.currentTarget.value };
+                      onValueChange(blockId, "router_routes", next);
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-foreground">Send to node</Label>
+                  <Input
+                    value={route.to}
+                    placeholder="node-id"
+                    onChange={(event) => {
+                      const next = [...routerRoutes];
+                      next[index] = { ...next[index], to: event.currentTarget.value };
+                      onValueChange(blockId, "router_routes", next);
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {isParallelNode && (
+        <div className="space-y-2 rounded-lg border border-border bg-muted/10 p-3 text-xs text-muted-foreground">
+          <p className="font-semibold text-foreground">Parallel merge policy</p>
+          <Select
+            value={parallelAggregate}
+            onValueChange={(next) => onValueChange(blockId, "parallel_aggregate", next)}
+          >
+            <SelectTrigger className="h-8">
+              <SelectValue placeholder="Choose merge policy" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="rank+merge">Rank + merge (default)</SelectItem>
+              <SelectItem value="vote">Vote</SelectItem>
+              <SelectItem value="concat">Concatenate outputs</SelectItem>
+            </SelectContent>
+          </Select>
+          <p>Determines how branch outputs reconcile after parallel execution.</p>
+        </div>
+      )}
+      {isLoopNode && (
+        <div className="space-y-3 rounded-lg border border-border bg-muted/10 p-3 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-foreground">Loop settings</p>
+            <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Concurrency &amp; policy</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label className="text-xs text-foreground">Max concurrency</Label>
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={loopConcurrency}
+                onChange={(event) => {
+                  const parsed = Number(event.currentTarget.value);
+                  const safe = Number.isNaN(parsed) ? LOOP_DEFAULT.concurrency : Math.max(1, Math.min(50, parsed));
+                  onValueChange(blockId, "loop_concurrency", safe);
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 rounded-md border border-border/60 bg-card/50 px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-foreground">Stop on error</p>
+                <p>Fail fast instead of skipping errored items.</p>
+              </div>
+              <Switch
+                checked={loopStopOnError}
+                onCheckedChange={(checked) => onValueChange(blockId, "loop_stopOnError", checked)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      {isRetryNode && (
+        <div className="space-y-3 rounded-lg border border-border bg-muted/10 p-3 text-xs text-muted-foreground">
+          <p className="font-semibold text-foreground">Retry policy</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <Label className="text-xs text-foreground">Timeout (ms)</Label>
+              <Input
+                type="number"
+                min={1000}
+                max={600000}
+                value={retryTimeout}
+                onChange={(event) => {
+                  const parsed = Number(event.currentTarget.value);
+                  const safe = Number.isNaN(parsed)
+                    ? RETRY_DEFAULT.timeoutMs
+                    : Math.max(1000, Math.min(600000, parsed));
+                  onValueChange(blockId, "retry_timeoutMs", safe);
+                }}
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-foreground">Retries</Label>
+              <Input
+                type="number"
+                min={0}
+                max={5}
+                value={retryRetries}
+                onChange={(event) => {
+                  const parsed = Number(event.currentTarget.value);
+                  const safe = Number.isNaN(parsed) ? RETRY_DEFAULT.retries : Math.max(0, Math.min(5, parsed));
+                  onValueChange(blockId, "retry_retries", safe);
+                }}
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-foreground">Backoff</Label>
+              <Select
+                value={retryBackoff}
+                onValueChange={(next) => onValueChange(blockId, "retry_backoff", next)}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fixed">Fixed</SelectItem>
+                  <SelectItem value="expo">Exponential</SelectItem>
+                  <SelectItem value="jitter">Jitter</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <p>Wrap downstream nodes with consistent timeout, retry, and backoff guardrails.</p>
         </div>
       )}
       {isRagNode && (
@@ -3138,22 +3640,6 @@ function BlockParameters({
               {hint}
             </div>
           ))}
-        </div>
-      )}
-      {modalityRequirements.length > 0 && (
-        <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-3">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-foreground">Multimodal payloads</p>
-            <p className="text-xs text-muted-foreground">
-              Upload, annotate, and structure the required audio, video, or scene data before this
-              block executes.
-            </p>
-          </div>
-          <ModalityRequirementSection
-            requirements={modalityRequirements}
-            state={modalityState}
-            onStateChange={(next) => onValueChange(blockId, "modalities", next)}
-          />
         </div>
       )}
       {hasSlots ? (
@@ -3512,6 +3998,22 @@ function buildDefaultParamsForBlock(
 
   if (isApprovalBlock(nodeId)) {
     Object.assign(defaults, cloneApprovalDefaults());
+  }
+
+  if (nodeId === "control-router") {
+    defaults.router_routes = defaultRouterRoutes();
+  }
+  if (nodeId === "control-loop") {
+    defaults.loop_concurrency = LOOP_DEFAULT.concurrency;
+    defaults.loop_stopOnError = LOOP_DEFAULT.stopOnError;
+  }
+  if (nodeId === "control-parallel") {
+    defaults.parallel_aggregate = PARALLEL_DEFAULT_AGGREGATE;
+  }
+  if (nodeId === "control-retry") {
+    defaults.retry_timeoutMs = RETRY_DEFAULT.timeoutMs;
+    defaults.retry_retries = RETRY_DEFAULT.retries;
+    defaults.retry_backoff = RETRY_DEFAULT.backoff;
   }
 
   const modalityDefaults = createDefaultModalityState(
