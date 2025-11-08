@@ -62,23 +62,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { OnboardingDialog } from "@/components/onboarding-dialog";
+import type { RunRecord } from "@/types/run";
 
-interface RunPreviewResponse {
-  runId: string;
-  receivedAt: string;
-  manifest: {
-    flow: PromptSpec["flow"];
-    nodeCount: number;
-    edgeCount: number;
-    blocks: Array<{
-      id: string;
-      block: string;
-      params: Record<string, unknown>;
-      output: LangGraphRunBlockOutput;
-    }>;
-  };
-  message: string;
-}
+type RunPreviewResponse = RunRecord;
 
 interface StudioShellProps {
   library: PromptMetadata[];
@@ -1109,6 +1095,7 @@ function CanvasPanel({
   const [isRunning, setIsRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunPreviewResponse | null>(null);
+  const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [liveLogs, setLiveLogs] = useState<string[]>([]);
   const [snapEnabled, setSnapEnabled] = useState(true);
@@ -1298,6 +1285,18 @@ function CanvasPanel({
     return () => clearTimeout(id);
   }, [rf, nodes.length, edges.length]);
 
+  useEffect(() => {
+    if (!dialogOpen) return;
+    fetch("/api/runs")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data?.runs)) {
+          setRunHistory(data.runs.slice(0, 10));
+        }
+      })
+      .catch(() => {});
+  }, [dialogOpen]);
+
   const triggerRunPreview = useCallback(async () => {
     setDialogOpen(true);
     setIsRunning(true);
@@ -1317,6 +1316,7 @@ function CanvasPanel({
         }
         const data = (await response.json()) as RunPreviewResponse;
         setRunResult(data);
+        setRunHistory((prev) => [data, ...prev.filter((entry) => entry.runId !== data.runId)].slice(0, 5));
       } else {
         const response = await fetch("/api/run/stream", {
           method: "POST",
@@ -1333,15 +1333,23 @@ function CanvasPanel({
           buffer += decoder.decode(value, { stream: true });
           let idx;
           while ((idx = buffer.indexOf("\n")) >= 0) {
-            const line = buffer.slice(0, idx).trim();
-            buffer = buffer.slice(idx + 1);
+              const rawLine = buffer.slice(0, idx).trim();
+              buffer = buffer.slice(idx + 1);
+            if (!rawLine) continue;
+            const line = rawLine.startsWith("data:") ? rawLine.slice(5).trim() : rawLine;
             if (!line) continue;
             setLiveLogs((prev) => [...prev, line]);
             try {
               const evt = JSON.parse(line);
-              if (evt.type === "result") setRunResult(evt.data as RunPreviewResponse);
+              if (evt.type === "run_completed") {
+                const payload = evt.data as RunPreviewResponse;
+                setRunResult(payload);
+                setRunHistory((prev) => [payload, ...prev.filter((entry) => entry.runId !== payload.runId)].slice(0, 5));
+              } else if (evt.type === "error") {
+                setRunError(evt.error ?? "Stream error");
+              }
             } catch {
-              // ignore
+              // ignore malformed line
             }
           }
         }
@@ -1595,14 +1603,27 @@ function CanvasPanel({
               )}
               {runResult && !isRunning && !runError && (
                 <div className="space-y-3 text-sm">
-                  <div className="rounded-lg border border-border bg-muted/30 p-3">
-                    <p className="font-medium">Run ID</p>
-                    <p className="text-muted-foreground">{runResult.runId}</p>
-                    <p className="mt-2 font-medium">Summary</p>
-                    <p className="text-muted-foreground">
-                      Blocks {runResult.manifest.blocks.length} · Nodes {runResult.manifest.nodeCount} · Edges {runResult.manifest.edgeCount}
-                    </p>
-                    <p className="mt-2 text-xs text-muted-foreground">{runResult.message}</p>
+                  <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3 text-sm">
+                    <div>
+                      <p className="font-medium">Run ID</p>
+                      <p className="text-muted-foreground break-all">{runResult.runId}</p>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div>
+                        <p className="font-medium">Summary</p>
+                        <p className="text-muted-foreground">
+                          Blocks {runResult.manifest.blocks.length} · Nodes {runResult.manifest.nodeCount} · Edges {runResult.manifest.edgeCount}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-medium">Usage</p>
+                        <p className="text-muted-foreground">
+                          {runResult.usage.promptTokens} prompt · {runResult.usage.completionTokens} completion · total {runResult.usage.totalTokens} tokens
+                        </p>
+                        <p className="text-muted-foreground">${runResult.costUsd.toFixed(4)} · {runResult.latencyMs} ms</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{runResult.message}</p>
                   </div>
                   <div className="space-y-2">
                     {runResult.manifest.blocks.map((block) => (
@@ -1653,6 +1674,31 @@ function CanvasPanel({
                   <pre className="max-h-64 overflow-auto rounded bg-muted p-3 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap font-mono" data-testid="prompt-preview">
                     {JSON.stringify(runResult, null, 2)}
                   </pre>
+                  {runHistory.length > 0 && (
+                    <div className="rounded border border-border/70 bg-muted/20">
+                      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Recent runs
+                      </div>
+                      <div className="max-h-40 divide-y divide-border/60 overflow-auto text-xs">
+                        {runHistory.map((entry) => (
+                          <button
+                            key={entry.runId}
+                            type="button"
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-muted"
+                            onClick={() => setRunResult(entry)}
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-foreground">{entry.runId}</p>
+                              <p className="text-muted-foreground">
+                                {new Date(entry.startedAt).toLocaleTimeString()} · {entry.usage.totalTokens} tokens
+                              </p>
+                            </div>
+                            <div className="text-muted-foreground">${entry.costUsd.toFixed(4)}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {streaming && (
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live logs</p>

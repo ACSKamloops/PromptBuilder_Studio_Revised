@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import type { PromptSpec } from "@/lib/promptspec";
-import { executeLangGraph } from "@/lib/runtime/langgraph-runner";
+import { getProvider } from "@/server/providers";
+import { recordRun } from "@/server/run-ledger";
+import type { PromptSpec } from "@/lib/promptspec";
 
 interface RunRequestBody {
   promptSpec?: PromptSpec;
+  provider?: string;
 }
 
 export async function POST(request: Request) {
@@ -23,7 +26,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid PromptSpec format." }, { status: 422 });
   }
 
-  const result = await executeLangGraph(promptSpec);
-
+  const provider = getProvider(body.provider);
+  const result = await provider.run(promptSpec);
+  recordRun(result);
   return NextResponse.json(result);
 }
