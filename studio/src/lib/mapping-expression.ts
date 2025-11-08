@@ -95,13 +95,19 @@ function evaluateFunction(name: string, args: string[], ctx: Context): unknown {
       const source = values[0];
       if (typeof values[1] !== "string") return undefined;
       if (!source || typeof source !== "object") return undefined;
-      return values[1]
-        .split(".")
-        .reduce<unknown>((acc, key) => (acc && typeof acc === "object" ? (acc as Record<string, unknown>)[key] : undefined), source);
+      return values[1].split(".").reduce<unknown>((current: unknown, key) => {
+        if (current && typeof current === "object" && key in (current as Record<string, unknown>)) {
+          return (current as Record<string, unknown>)[key];
+        }
+        return undefined;
+      }, source);
     }
     case "sum": {
       const arr = Array.isArray(values[0]) ? (values[0] as unknown[]) : [];
-      return arr.reduce((acc, val) => acc + (typeof val === "number" ? val : Number(val) || 0), 0);
+      return arr.reduce<number>(
+        (acc, val) => acc + (typeof val === "number" ? val : Number(val) || 0),
+        0,
+      );
     }
     case "formatDate": {
       const value = values[0];
@@ -136,4 +142,3 @@ export function evaluateExpression(expression: string, context: Context): unknow
 
   return context[trimmed];
 }
-

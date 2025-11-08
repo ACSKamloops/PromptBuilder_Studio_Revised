@@ -1241,7 +1241,7 @@ function LibraryPanel({
         <DialogHeader>
           <DialogTitle>{infoBlock?.metadata?.title ?? infoBlock?.block.name}</DialogTitle>
           <DialogDescription>
-            {infoBlock?.metadata?.description ?? infoBlock?.block.description}
+            {infoBlock?.block.description ?? "Inspect block metadata, inputs, and guardrails."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 text-sm text-muted-foreground">
@@ -1271,8 +1271,8 @@ function LibraryPanel({
                   <li key={slot.name} className="rounded-md border border-border/60 bg-muted/40 px-2 py-1">
                     <span className="font-semibold text-foreground">{slot.name}</span>{" "}
                     <span className="text-xs uppercase tracking-wide text-muted-foreground">{slot.type}</span>
-                    {slot.description ? (
-                      <span className="block text-xs text-muted-foreground">{slot.description}</span>
+                    {slot.help ? (
+                      <span className="block text-xs text-muted-foreground">{slot.help}</span>
                     ) : null}
                   </li>
                 ))}

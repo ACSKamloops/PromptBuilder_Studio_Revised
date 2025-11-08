@@ -1,6 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
-const selectPreset = async (page, label: string | RegExp) => {
+const selectPreset = async (page: Page, label: string | RegExp) => {
   await page.getByTestId('flow-select').click();
   await page.getByRole('option', { name: label }).first().click();
 };

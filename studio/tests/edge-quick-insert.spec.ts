@@ -21,7 +21,7 @@ test.describe('Edge quick insert', () => {
       const w = window as StudioTestWindow;
       return typeof w.__testOpenQuickInsert === 'function';
     });
-    await page.evaluate((id) => {
+    await page.evaluate((id: string) => {
       const w = window as StudioTestWindow;
       w.__testOpenQuickInsert?.(id);
     }, edgeId);

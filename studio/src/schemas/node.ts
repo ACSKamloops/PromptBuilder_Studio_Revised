@@ -157,8 +157,13 @@ const ManualTriggerNode = z.object({
 const WebhookTriggerNode = z.object({
   type: z.literal("trigger.webhook"),
   params: z
-    .object({ path: z.string(), secret: z.string(), method: z.enum(["GET", "POST"]).default("POST"), verifySignature: z.boolean().default(true) })
-    .default({ verifySignature: true, method: "POST" }),
+    .object({
+      path: z.string(),
+      secret: z.string(),
+      method: z.enum(["GET", "POST"]).default("POST"),
+      verifySignature: z.boolean().default(true),
+    })
+    .default(() => ({ path: "/webhook", secret: "CHANGE_ME", method: "POST" as const, verifySignature: true })),
 });
 
 const ScheduleTriggerNode = z.object({

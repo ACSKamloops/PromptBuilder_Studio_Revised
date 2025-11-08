@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type { PromptSpec } from "@/lib/promptspec";
 import { getProvider } from "@/server/providers";
 import { recordRun } from "@/server/run-ledger";
-import type { PromptSpec } from "@/lib/promptspec";
 
 interface RunRequestBody {
   promptSpec?: PromptSpec;

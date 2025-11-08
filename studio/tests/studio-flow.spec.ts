@@ -1,7 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import type { StudioTestWindow } from './test-window';
 
-const selectPreset = async (page, label: string | RegExp) => {
+const selectPreset = async (page: Page, label: string | RegExp) => {
   // Try UI first
   try {
     await page.getByTestId('flow-select').click();
@@ -21,7 +21,7 @@ const selectPreset = async (page, label: string | RegExp) => {
       const w = window as StudioTestWindow;
       return typeof w.__testReplaceFlow === 'function';
     });
-    await page.evaluate((id) => {
+    await page.evaluate((id: string) => {
       const w = window as StudioTestWindow;
       w.__testReplaceFlow?.({ presetId: id });
     }, presetId);

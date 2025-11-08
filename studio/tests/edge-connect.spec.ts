@@ -32,7 +32,7 @@ test.describe('Edge connections', () => {
       const w = window as StudioTestWindow;
       return typeof w.__testReplaceFlow === 'function';
     });
-    await page.evaluate((nodeId) => {
+    await page.evaluate((nodeId: string) => {
       const w = window as StudioTestWindow;
       w.__testReplaceFlow?.({
         presetId: 'baseline-deep-research',

@@ -16,7 +16,8 @@ test.describe('Node context menu', () => {
       const w = window as StudioTestWindow;
       return w.__testGetExtraIds?.()?.[0];
     });
-    await page.evaluate((id) => {
+    if (!firstId) throw new Error("Failed to resolve extra node id");
+    await page.evaluate((id: string) => {
       const w = window as StudioTestWindow;
       w.__testOpenNodeMenu?.(id);
     }, firstId);
@@ -26,7 +27,7 @@ test.describe('Node context menu', () => {
     await expect(page.locator('[data-node-instance="extra"]')).toHaveCount(2);
 
     // Delete one via context menu
-    await page.evaluate((id) => {
+    await page.evaluate((id: string) => {
       const w = window as StudioTestWindow;
       w.__testOpenNodeMenu?.(id);
     }, firstId);
