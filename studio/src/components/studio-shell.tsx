@@ -336,6 +336,26 @@ const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false);
     };
   }, [activePreset, nodeParams, metadataById, extraNodes, userEdges]);
 
+  const ragConnections = useMemo(() => {
+    const ragNodeIds = new Set(
+      promptSpec.nodes
+        .filter((node) => {
+          const baseId = node.id.split("#")[0];
+          return baseId === "rag-retriever" || baseId === "graphrag";
+        })
+        .map((node) => node.id),
+    );
+    const connected = new Set<string>();
+    for (const edge of promptSpec.edges) {
+      const fromBase = edge.from.split("#")[0];
+      if (ragNodeIds.has(edge.from) || ragNodeIds.has(fromBase)) {
+        connected.add(edge.to);
+        connected.add(edge.to.split("#")[0]);
+      }
+    }
+    return connected;
+  }, [promptSpec]);
+
   const flowRecommendations = useMemo(
     () => deriveFlowRecommendations(activePreset),
     [activePreset],
@@ -853,6 +873,7 @@ useEffect(() => {
             onValueChange={handleParamChange}
             promptSpec={promptSpec}
             blueprint={uiBlueprint}
+            ragConnections={ragConnections}
           />
         </Panel>
       </PanelGroup>
@@ -874,6 +895,7 @@ useEffect(() => {
             onValueChange={handleParamChange}
             promptSpec={promptSpec}
             blueprint={uiBlueprint}
+            ragConnections={ragConnections}
           />
         </DialogContent>
       </Dialog>
@@ -2197,6 +2219,7 @@ function InspectorPanel({
   onValueChange,
   promptSpec,
   blueprint,
+  ragConnections,
 }: {
   selectedBlockId: string;
   metadataMap: Map<string, PromptMetadata>;
@@ -2204,12 +2227,14 @@ function InspectorPanel({
   onValueChange: (blockId: string, key: string, value: unknown) => void;
   promptSpec: PromptSpec;
   blueprint: UIBlueprint;
+  ragConnections: Set<string>;
 }) {
   const baseId = selectedBlockId.split("#")[0];
   const descriptor = resolveBlockDescriptor(baseId, metadataMap);
   const metadata =
     (descriptor?.metadataId ? metadataMap.get(descriptor.metadataId) : undefined) ??
     metadataMap.get(baseId);
+  const ragConnected = ragConnections.has(selectedBlockId) || ragConnections.has(baseId);
 
   if (!descriptor && !metadata) {
     return (
@@ -2324,6 +2349,7 @@ function InspectorPanel({
             values={values}
             onValueChange={onValueChange}
             blueprint={blueprint}
+            ragConnected={ragConnected}
           />
           <PromptPreview metadata={metadata} values={values} />
           <FlowSpecView promptSpec={promptSpec} focusedNodeId={selectedBlockId} />
@@ -2340,13 +2366,27 @@ function BlockParameters({
   values,
   onValueChange,
   blueprint,
+  ragConnected,
 }: {
   blockId: string;
   metadata?: PromptMetadata;
   values: Record<string, unknown>;
   onValueChange: (blockId: string, key: string, value: unknown) => void;
   blueprint: UIBlueprint;
+  ragConnected: boolean;
 }) {
+  const guardEligible =
+    !!metadata &&
+    (metadata.tags?.includes("citations") ||
+      metadata.tags?.includes("RAG") ||
+      metadata.category === "playbook");
+
+  useEffect(() => {
+    if (guardEligible && ragConnected && values?.guard_requireCitations !== true) {
+      onValueChange(blockId, "guard_requireCitations", true);
+    }
+  }, [guardEligible, ragConnected, blockId, onValueChange, values?.guard_requireCitations]);
+
   if (!metadata?.slots || metadata.slots.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
@@ -2365,6 +2405,52 @@ function BlockParameters({
           Parameters
         </p>
       </div>
+      {guardEligible && (
+        <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-foreground">Guardrails</p>
+            {ragConnected && (
+              <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                RAG linked
+              </span>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-foreground">Require citations</p>
+              <p>Enforce citations whenever this block runs.</p>
+            </div>
+            <Switch
+              checked={ragConnected ? true : Boolean(values?.guard_requireCitations)}
+              onCheckedChange={(checked) => onValueChange(blockId, "guard_requireCitations", checked)}
+              disabled={ragConnected}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-foreground">Refusal policy</Label>
+            <Select
+              value={
+                typeof values?.guard_refusalPolicy === "string"
+                  ? (values.guard_refusalPolicy as string)
+                  : "regulated-only"
+              }
+              onValueChange={(next) => onValueChange(blockId, "guard_refusalPolicy", next)}
+            >
+              <SelectTrigger className="h-8 text-foreground">
+                <SelectValue placeholder="Refusal policy" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="off">Off (allow freestyle)</SelectItem>
+                <SelectItem value="regulated-only">Regulated only</SelectItem>
+                <SelectItem value="always">Always refuse when ungrounded</SelectItem>
+              </SelectContent>
+            </Select>
+            <p>
+              Controls whether the model can decline when prompts step outside grounded context or policy.
+            </p>
+          </div>
+        </div>
+      )}
       {renderingHints.length > 0 && (
         <div className="space-y-2">
           {renderingHints.map((hint) => (

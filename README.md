@@ -53,6 +53,10 @@ Placeholders now support a safe helper DSL for data pills:
 
 Conditionals (`{{#if …}}`) evaluate the same expressions, so you can gate sections with `{{#if coalesce(a,b)}}…{{/if}}`.
 
+## Governance Guardrails
+- Prompt nodes tagged with `citations` automatically force “Require citations” when upstream RAG/GraphRAG nodes feed them; the inspector shows the lock + refusal-policy control.
+- Refusal policy selector (`off`, `regulated-only`, `always`) lives in the inspector guardrail card so flows stay compliant without ad‑hoc coding.
+
 ## Contributing
 Contributions that strengthen typed schemas (Zod), provider adapters, streaming run previews, mapping DSL, and reproducibility utilities are welcome. Please open small PRs and include tests.
 

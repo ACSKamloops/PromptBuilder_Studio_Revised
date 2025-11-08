@@ -77,6 +77,7 @@ For the master product spec, see: `docs/Instructions for Prompt.md`.
 - Save/Load: Flow dialog or `window.__testReplaceFlow(snapshot)` in tests.
 - Inspectors: pull `when_to_use`, `failure_modes`, `acceptance_criteria` directly from YAML.
 - Mapping DSL: placeholders/data pills support helpers like `coalesce`, `join`, `upper/lower`, `pick`, `sum`, `formatDate` for deterministic transforms.
+- Governance guardrails: when a prompt node receives RAG/GraphRAG context, the inspector locks “Require citations” ON and exposes a refusal-policy control.
 - Commands: Dev `cd studio && npm run dev`; Unit `npm run test:unit`; E2E `npm run test:e2e` (install browsers first); Build `npm run build && npm start`.
 
 ---
