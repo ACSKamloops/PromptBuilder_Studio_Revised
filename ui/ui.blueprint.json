@@ -23,6 +23,15 @@
       "props": {
         "min": 0
       }
+    },
+    "audio_timeline": {
+      "component": "AudioTimelineEditor"
+    },
+    "video_event_graph": {
+      "component": "VideoEventGraphBuilder"
+    },
+    "scene_graph": {
+      "component": "SceneGraphBuilder"
     }
   },
   "rendering_rules": [

@@ -89,7 +89,10 @@
               "select",
               "multiselect",
               "toggle",
-              "number"
+              "number",
+              "audio_timeline",
+              "video_event_graph",
+              "scene_graph"
             ]
           },
           "required": {
@@ -135,6 +138,68 @@
     },
     "example_instantiation": {
       "type": "object"
+    },
+    "modalities": {
+      "type": "array",
+      "description": "Structured multimodal payload requirements for this prompt.",
+      "items": {
+        "type": "object",
+        "required": [
+          "modality",
+          "payloads"
+        ],
+        "properties": {
+          "modality": {
+            "type": "string",
+            "enum": [
+              "audio",
+              "video",
+              "three_d"
+            ],
+            "description": "Top-level modality bucket."
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "payloads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "label"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "audio_timeline",
+                    "video_event_graph",
+                    "scene_graph"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "schema": {
+                  "type": "string",
+                  "description": "URI or ref for downstream schema validation."
+                },
+                "required": {
+                  "type": "boolean",
+                  "default": true
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
