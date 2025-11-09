@@ -2027,7 +2027,7 @@ function CanvasPanel({
                 </div>
                 <p className="text-xs text-muted-foreground">{runResult.message}</p>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2" data-testid="run-blocks">
                 {runResult.manifest.blocks.map((block) => {
                   const artifact = block.artifact;
                   const governance = block.governance;
@@ -2035,6 +2035,7 @@ function CanvasPanel({
                     <div
                       key={block.id}
                       className="rounded-lg border border-border bg-card p-3 text-xs leading-relaxed space-y-2"
+                      data-testid="run-block"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-semibold">{block.block}</p>

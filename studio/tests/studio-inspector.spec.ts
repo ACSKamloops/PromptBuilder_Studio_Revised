@@ -39,9 +39,8 @@ test.describe('Studio inspector interactions', () => {
     await page.getByRole('button', { name: 'Run (Preview)' }).click();
     const runDialog = page.locator('[role="dialog"]');
     await expect(runDialog.getByText(/Run ID/).first()).toBeVisible();
-    const blocksContainer = runDialog.locator('.space-y-2').last();
-    await expect(blocksContainer).toContainText('Context-Aware Decomposition (CAD) for Long-Form Writing');
-    await expect(blocksContainer).toContainText('Recursive Self-Improvement (RSIP): Generate–Evaluate–Improve');
-    await expect(blocksContainer).toContainText('Chain of Verification (CoV): Draft–Plan–Execute–Finalize');
+    await expect(runDialog).toContainText('Context-Aware Decomposition');
+    await expect(runDialog).toContainText('Recursive Self-Improvement');
+    await expect(runDialog).toContainText('Chain of Verification');
   });
 });

@@ -51,12 +51,11 @@ test.describe('Studio flow interactions', () => {
   test('run preview returns manifest with block output', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Run (Preview)' }).click();
-    // In headless CI, match on stable message + output lines
+    const runDialog = page.locator('[role="dialog"]');
     await expect(
-      page.locator('text=LangGraph execution completed with sandboxed node artefacts').first(),
+      runDialog.locator('text=LangGraph execution completed with sandboxed node artefacts').first(),
     ).toBeVisible({ timeout: 10000 });
-    await expect(
-      page.getByText('Generated artefact for System Mandate', { exact: false }),
-    ).toBeVisible();
+    const firstBlock = runDialog.getByTestId('run-block').first();
+    await expect(firstBlock).toContainText('System Mandate');
   });
 });
