@@ -79,6 +79,7 @@ import {
 } from "@/components/ui/dialog";
 import { OnboardingDialog } from "@/components/onboarding-dialog";
 import type { RunRecord } from "@/types/run";
+import type { ExecutionMetrics, PromptMetricsSummary } from "@/types/run-metrics";
 import type { LangGraphVerificationSummary } from "@/lib/runtime/langgraph-runner";
 import type { ApprovalTask } from "@/types/approval";
 
@@ -153,6 +154,33 @@ type TestFlowImport = {
   }>;
   edges?: Array<{ source: string; target: string }>;
 };
+
+const formatNumber = (value: number, fractionDigits = 0) => {
+  if (!Number.isFinite(value)) return "—";
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: fractionDigits,
+    minimumFractionDigits: fractionDigits,
+  });
+};
+
+const formatMs = (value: number) => {
+  if (!Number.isFinite(value)) return "—";
+  return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${value.toFixed(0)} ms`;
+};
+
+const formatPercentage = (value: number) => {
+  if (!Number.isFinite(value)) return "—";
+  return `${(value * 100).toFixed(1)}%`;
+};
+
+const upsertPromptMetrics = (existing: PromptMetricsSummary[], summary: PromptMetricsSummary) => {
+  const map = new Map(existing.map((item) => [item.promptId, item]));
+  map.set(summary.promptId, summary);
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime(),
+  );
+};
+
 type StudioTestWindow = Window &
   typeof globalThis & {
     __extraNodes?: string[];
@@ -1054,70 +1082,104 @@ useEffect(() => {
             {approvals.length === 0 ? (
               <p className="text-muted-foreground">No approval tasks yet.</p>
             ) : (
-              approvals.map((task) => (
-                <div
-                  key={task.id}
-                  className="rounded-lg border border-border bg-card/60 p-3 shadow-sm"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{task.label}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Run {task.runId} · Node {task.nodeId}
-                      </p>
+              approvals.map((task) => {
+                const panelConfidence =
+                  typeof task.aggregateConfidence === "number"
+                    ? (task.aggregateConfidence * 100).toFixed(1)
+                    : null;
+                const judgeList = Array.isArray(task.judges) ? task.judges : [];
+                const escalated = Boolean(task.escalated && !task.autoApprove);
+                return (
+                  <div
+                    key={task.id}
+                    className="rounded-lg border border-border bg-card/60 p-3 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{task.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Run {task.runId} · Node {task.nodeId}
+                        </p>
+                      </div>
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[11px] uppercase tracking-wide",
+                          task.status === "pending"
+                            ? "bg-amber-100 text-amber-700"
+                            : task.status === "approved"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-red-100 text-red-700",
+                        )}
+                      >
+                        {task.status}
+                      </span>
                     </div>
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[11px] uppercase tracking-wide",
-                        task.status === "pending"
-                          ? "bg-amber-100 text-amber-700"
-                          : task.status === "approved"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-red-100 text-red-700",
-                      )}
-                    >
-                      {task.status}
-                    </span>
-                  </div>
-                  {task.assignees.length > 0 && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Assignees: {task.assignees.join(", ")}
-                    </p>
-                  )}
-                  {task.notes && (
-                    <p className="mt-2 text-xs text-muted-foreground">Instructions: {task.notes}</p>
-                  )}
-                  {task.decision && task.status !== "pending" && (
-                    <p className="mt-2 text-xs text-muted-foreground">Decision: {task.decision}</p>
-                  )}
-                  <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                    <span>
-                      Submitted {new Date(task.submittedAt).toLocaleString()}
-                      {typeof task.slaHours === "number" && task.slaHours > 0
-                        ? ` · SLA ${task.slaHours}h`
-                        : ""}
-                    </span>
-                    {task.status === "pending" && (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleApprovalAction(task, "approve")}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleApprovalAction(task, "reject")}
-                        >
-                          Reject
-                        </Button>
+                    {panelConfidence && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        <p>
+                          Panel confidence {panelConfidence}%{escalated ? " · Escalated" : " · Auto-evaluated"}
+                        </p>
+                        {task.evaluationSummary && <p>{task.evaluationSummary}</p>}
+                        {task.escalationReason && (
+                          <p className="italic">Reason: {task.escalationReason}</p>
+                        )}
                       </div>
                     )}
+                    {task.assignees.length > 0 && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Assignees: {task.assignees.join(", ")}
+                      </p>
+                    )}
+                    {task.notes && (
+                      <p className="mt-2 text-xs text-muted-foreground">Instructions: {task.notes}</p>
+                    )}
+                    {judgeList.length > 0 && (
+                      <div className="mt-2 rounded border border-border/50 bg-muted/30 p-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Judge verdicts
+                        </p>
+                        <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                          {judgeList.map((judge) => (
+                            <li key={`${task.id}-${judge.agentId}`}>
+                              <span className="font-semibold text-foreground/80">{judge.name}</span>:{" "}
+                              {judge.verdict} · {(judge.confidence * 100).toFixed(1)}% · {judge.rationale}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {task.decision && task.status !== "pending" && (
+                      <p className="mt-2 text-xs text-muted-foreground">Decision: {task.decision}</p>
+                    )}
+                    <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                      <span>
+                        Submitted {new Date(task.submittedAt).toLocaleString()}
+                        {typeof task.slaHours === "number" && task.slaHours > 0
+                          ? ` · SLA ${task.slaHours}h`
+                          : ""}
+                      </span>
+                      {task.status === "pending" && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleApprovalAction(task, "approve")}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleApprovalAction(task, "reject")}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </DialogContent>
@@ -1410,6 +1472,8 @@ function CanvasPanel({
   const [runError, setRunError] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunPreviewResponse | null>(null);
   const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
+  const [promptMetrics, setPromptMetrics] = useState<PromptMetricsSummary[]>([]);
+  const [liveMetrics, setLiveMetrics] = useState<ExecutionMetrics | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [liveLogs, setLiveLogs] = useState<string[]>([]);
   const currentVerificationSummary = runResult?.verification ?? DEFAULT_VERIFICATION_SUMMARY;
@@ -1454,6 +1518,33 @@ function CanvasPanel({
       y: rect.top + dragGhost.position.y * zoom + y,
     };
   }, [dragGhost, rf]);
+  const executionMetrics = useMemo(() => liveMetrics ?? runResult?.metrics ?? null, [liveMetrics, runResult]);
+  const activePromptSummary = useMemo(() => {
+    if (runResult?.promptMetrics) return runResult.promptMetrics;
+    const summary = promptMetrics.find((item) => item.promptId === promptSpec.flow.id);
+    return summary ?? null;
+  }, [runResult, promptMetrics, promptSpec.flow.id]);
+  const psaReport = useMemo(() => {
+    if (!runResult) return null;
+    for (const block of runResult.manifest.blocks) {
+      if (block.output?.psaReport) return block.output.psaReport;
+    }
+    return null;
+  }, [runResult]);
+  const slowestNode = useMemo(() => {
+    if (!executionMetrics) return null;
+    return executionMetrics.perNode.reduce<ExecutionMetrics["perNode"][number] | null>((slow, node) => {
+      if (!slow || node.latencyMs > slow.latencyMs) return node;
+      return slow;
+    }, null);
+  }, [executionMetrics]);
+  const handleAutoPrompt = useCallback(() => {
+    const promptName = activePromptSummary?.promptName ?? promptSpec.flow.name;
+    const message = psaReport?.autopromptReady
+      ? `${promptName}: Stability variance exceeded threshold. AutoPrompt optimisation queued.`
+      : `${promptName}: AutoPrompt optimisation loop queued.`;
+    onToast(message);
+  }, [activePromptSummary?.promptName, onToast, promptSpec.flow.name, psaReport?.autopromptReady]);
   useHotkeys(
     ["meta+k", "ctrl+k"],
     (event) => {
@@ -1646,20 +1737,35 @@ function CanvasPanel({
 
   useEffect(() => {
     if (!dialogOpen) return;
+    let cancelled = false;
     fetch("/api/runs")
       .then((res) => res.json())
       .then((data) => {
+        if (cancelled) return;
         if (Array.isArray(data?.runs)) {
           setRunHistory(data.runs.slice(0, 10));
+          const summaries = data.runs
+            .map((entry: RunRecord) => entry.promptMetrics)
+            .filter((summary): summary is PromptMetricsSummary => Boolean(summary));
+          if (summaries.length > 0) {
+            setPromptMetrics((prev) => summaries.reduce((acc, summary) => upsertPromptMetrics(acc, summary), prev));
+          }
+        }
+        if (Array.isArray(data?.metrics)) {
+          setPromptMetrics(data.metrics);
         }
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [dialogOpen]);
   const triggerRunPreview = useCallback(async () => {
     setDialogOpen(true);
     setIsRunning(true);
     setRunError(null);
     setRunResult(null);
+    setLiveMetrics(null);
     setLiveLogs([]);
     try {
       if (!streaming) {
@@ -1674,7 +1780,11 @@ function CanvasPanel({
         }
         const data = (await response.json()) as RunPreviewResponse;
         setRunResult(data);
-        setRunHistory((prev) => [data, ...prev.filter((entry) => entry.runId !== data.runId)].slice(0, 5));
+        setLiveMetrics(data.metrics ?? null);
+        setRunHistory((prev) => [data, ...prev.filter((entry) => entry.runId !== data.runId)].slice(0, 10));
+        if (data.promptMetrics) {
+          setPromptMetrics((prev) => upsertPromptMetrics(prev, data.promptMetrics));
+        }
         onRefreshApprovals();
       } else {
         const response = await fetch("/api/run/stream", {
@@ -1703,8 +1813,15 @@ function CanvasPanel({
               if (evt.type === "run_completed") {
                 const payload = evt.data as RunPreviewResponse;
                 setRunResult(payload);
-                setRunHistory((prev) => [payload, ...prev.filter((entry) => entry.runId !== payload.runId)].slice(0, 5));
+                setLiveMetrics(payload.metrics ?? null);
+                setRunHistory((prev) => [payload, ...prev.filter((entry) => entry.runId !== payload.runId)].slice(0, 10));
+                if (payload.promptMetrics) {
+                  setPromptMetrics((prev) => upsertPromptMetrics(prev, payload.promptMetrics));
+                }
                 onRefreshApprovals();
+              } else if (evt.type === "metrics") {
+                const metricsPayload = evt.data as { runId: string; metrics: ExecutionMetrics };
+                setLiveMetrics(metricsPayload.metrics);
               } else if (evt.type === "error") {
                 setRunError(evt.error ?? "Stream error");
               }
@@ -2086,6 +2203,158 @@ function CanvasPanel({
                       </div>
                     ))}
                   </div>
+                  {executionMetrics && (
+                    <div className="rounded-lg border border-border bg-card/60 p-3 text-xs space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-foreground">Execution metrics</p>
+                        {slowestNode && (
+                          <span className="text-[11px] text-muted-foreground">
+                            Slowest node: {slowestNode.label} · {formatMs(slowestNode.latencyMs)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <div>
+                          <p className="font-medium text-foreground">Prompt tokens</p>
+                          <p className="text-muted-foreground">{formatNumber(executionMetrics.totals.promptTokens)}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Completion tokens</p>
+                          <p className="text-muted-foreground">
+                            {formatNumber(executionMetrics.totals.completionTokens)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Total tokens</p>
+                          <p className="text-muted-foreground">{formatNumber(executionMetrics.totals.totalTokens)}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Latency</p>
+                          <p className="text-muted-foreground">{formatMs(executionMetrics.totals.latencyMs)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {activePromptSummary && (
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">Historical metrics</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {activePromptSummary.runCount} runs · Last{" "}
+                            {new Date(activePromptSummary.lastUpdated).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {psaReport && (
+                            <Badge variant={psaReport.autopromptReady ? "destructive" : "secondary"}>
+                              {psaReport.autopromptReady ? "AutoPrompt recommended" : "Stable"}
+                            </Badge>
+                          )}
+                          <Button size="sm" onClick={handleAutoPrompt}>
+                            Trigger AutoPrompt
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <div>
+                          <p className="font-medium text-foreground">Avg latency</p>
+                          <p className="text-muted-foreground">{formatMs(activePromptSummary.latency.mean)}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            σ {formatMs(activePromptSummary.latency.standardDeviation)} · Var{" "}
+                            {formatNumber(activePromptSummary.latency.variance, 0)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Prompt tokens</p>
+                          <p className="text-muted-foreground">
+                            {formatNumber(activePromptSummary.tokens.prompt.mean)}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            σ {formatNumber(activePromptSummary.tokens.prompt.standardDeviation, 1)} · Var{" "}
+                            {formatNumber(activePromptSummary.tokens.prompt.variance, 1)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Completion tokens</p>
+                          <p className="text-muted-foreground">
+                            {formatNumber(activePromptSummary.tokens.completion.mean)}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            σ {formatNumber(activePromptSummary.tokens.completion.standardDeviation, 1)} · Var{" "}
+                            {formatNumber(activePromptSummary.tokens.completion.variance, 1)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Total tokens</p>
+                          <p className="text-muted-foreground">
+                            {formatNumber(activePromptSummary.tokens.total.mean)}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            σ {formatNumber(activePromptSummary.tokens.total.standardDeviation, 1)} · Var{" "}
+                            {formatNumber(activePromptSummary.tokens.total.variance, 1)}
+                          </p>
+                        </div>
+                      </div>
+                      {psaReport && (
+                        <div className="rounded border border-dashed border-border/80 bg-background/40 p-2 text-[11px]">
+                          <p className="font-semibold text-foreground">Prompt sensitivity</p>
+                          <p className="text-muted-foreground">
+                            Stability {formatPercentage(psaReport.stabilityScore)} · Variance{" "}
+                            {formatPercentage(psaReport.variance)} · Threshold {formatPercentage(psaReport.threshold)}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {psaReport.summary} Sample size {psaReport.sampleSize}. Axes:{" "}
+                            {psaReport.axes.length > 0 ? psaReport.axes.join(", ") : "—"}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {runResult?.benchmarks && (
+                    <div className="rounded-lg border border-border/70 bg-card/50 p-3 text-xs">
+                      <p className="text-sm font-semibold text-foreground">Benchmarks</p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <p className="font-medium text-foreground">Step success rate</p>
+                          <p className="text-muted-foreground">
+                            {formatPercentage(runResult.benchmarks.ssr.ratio)} ({runResult.benchmarks.ssr.executed}/
+                            {runResult.benchmarks.ssr.planned} steps)
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Verification efficacy</p>
+                          <p className="text-muted-foreground">
+                            {formatPercentage(runResult.benchmarks.verificationEfficacy.ratio)} · interventions{" "}
+                            {runResult.benchmarks.verificationEfficacy.interventions}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {promptMetrics.length > 0 && (
+                    <div className="rounded border border-border/70 bg-card/40">
+                      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Prompt metrics dashboard
+                      </div>
+                      <div className="max-h-48 divide-y divide-border/60 overflow-auto text-xs">
+                        {promptMetrics.slice(0, 5).map((summary) => (
+                          <div key={summary.promptId} className="flex items-center justify-between gap-3 px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-foreground">{summary.promptName}</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {summary.runCount} runs · σ tokens {formatNumber(summary.tokens.total.standardDeviation, 1)}
+                              </p>
+                            </div>
+                            <div className="text-right text-muted-foreground">
+                              <div>μ tokens {formatNumber(summary.tokens.total.mean)}</div>
+                              <div>μ latency {formatMs(summary.latency.mean)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <pre className="max-h-64 overflow-auto rounded bg-muted p-3 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap font-mono" data-testid="prompt-preview">
                     {JSON.stringify(runResult, null, 2)}
                   </pre>
@@ -2105,10 +2374,19 @@ function CanvasPanel({
                             <div className="min-w-0">
                               <p className="truncate font-medium text-foreground">{entry.runId}</p>
                               <p className="text-muted-foreground">
-                                {new Date(entry.startedAt).toLocaleTimeString()} · {entry.usage.totalTokens} tokens · conf {(entry.verification ?? DEFAULT_VERIFICATION_SUMMARY).averageConfidence.toFixed(2)}
+                                {new Date(entry.startedAt).toLocaleTimeString()} · {formatNumber(entry.usage.totalTokens)} tokens ·{" "}
+                                {formatMs(entry.latencyMs)}
                               </p>
                             </div>
-                            <div className="text-muted-foreground">${entry.costUsd.toFixed(4)}</div>
+                            <div className="text-right text-muted-foreground">
+                              <div>${entry.costUsd.toFixed(4)}</div>
+                              {entry.promptMetrics && (
+                                <div className="text-[11px]">
+                                  σ {formatMs(entry.promptMetrics.latency.standardDeviation)} · σ{" "}
+                                  {formatNumber(entry.promptMetrics.tokens.total.standardDeviation, 1)} tok
+                                </div>
+                              )}
+                            </div>
                           </button>
                         ))}
                       </div>

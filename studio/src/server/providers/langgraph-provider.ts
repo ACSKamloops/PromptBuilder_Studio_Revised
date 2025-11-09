@@ -1,41 +1,39 @@
 import type { PromptSpec } from "@/lib/promptspec";
 import { executeLangGraph } from "@/lib/runtime/langgraph-runner";
 import { enqueueApprovals } from "@/server/approval-inbox";
-import { LlmProvider, ProviderRunResult, RunStreamEvent, TokenUsage } from "./types";
-
-function estimateUsage(spec: PromptSpec): TokenUsage {
-  const promptChars = JSON.stringify(spec.nodes).length + JSON.stringify(spec.edges).length;
-  const completionChars = spec.nodes.length * 640; // rough heuristic for proposer+verifier pairs
-  const promptTokens = Math.max(1, Math.round(promptChars / 4));
-  const completionTokens = Math.max(1, Math.round(completionChars / 4));
-  return {
-    promptTokens,
-    completionTokens,
-    totalTokens: promptTokens + completionTokens,
-  };
-}
+import { LlmProvider, ProviderRunResult, RunStreamEvent } from "./types";
 
 export class LangGraphProvider implements LlmProvider {
   readonly name = "langgraph";
 
   async run(spec: PromptSpec): Promise<ProviderRunResult> {
-    const startedAt = new Date();
     const graphResult = await executeLangGraph(spec);
-    const completedAt = new Date();
-    const usage = estimateUsage(spec);
-    const latencyMs = completedAt.getTime() - startedAt.getTime();
+    const tokenTotals = graphResult.metrics?.totals ?? {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      latencyMs: graphResult.latencyMs ?? 0,
+    };
+    const usage = {
+      promptTokens: tokenTotals.promptTokens,
+      completionTokens: tokenTotals.completionTokens,
+      totalTokens: tokenTotals.totalTokens,
+    };
+    const latencyMs = graphResult.latencyMs ?? tokenTotals.latencyMs ?? 0;
     const costUsd = usage.totalTokens * 0.0000025; // illustrative stub pricing
 
     const runResult: ProviderRunResult = {
       runId: graphResult.runId,
-      startedAt: graphResult.receivedAt,
-      completedAt: completedAt.toISOString(),
+      startedAt: graphResult.startedAt ?? graphResult.receivedAt,
+      completedAt: graphResult.completedAt ?? new Date().toISOString(),
       latencyMs,
       costUsd,
       usage,
       manifest: graphResult.manifest,
       verification: graphResult.verification,
       gatingDecisions: graphResult.gatingDecisions,
+      benchmarks: graphResult.benchmarks,
+      metrics: graphResult.metrics,
       message: graphResult.message,
     };
     enqueueApprovals(spec, runResult);
@@ -52,6 +50,9 @@ export class LangGraphProvider implements LlmProvider {
       index += 1;
     }
     const result = await this.run(spec);
+    if (result.metrics) {
+      yield { type: "metrics", data: { runId: result.runId, metrics: result.metrics } };
+    }
     yield { type: "run_completed", data: result };
   }
 }

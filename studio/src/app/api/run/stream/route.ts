@@ -22,9 +22,12 @@ export async function POST(request: Request) {
       try {
         for await (const event of provider.stream(promptSpec)) {
           if (event.type === "run_completed") {
-            recordRun(event.data);
+            const recorded = recordRun(event.data);
+            const payload = { ...event, data: recorded };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+          } else {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
           }
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         }
       } catch (error) {
         const payload = { type: "error", error: (error as Error).message };

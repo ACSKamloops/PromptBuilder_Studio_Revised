@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { listRuns } from "@/server/run-ledger";
+import { listRuns, listPromptSummaries } from "@/server/run-ledger";
 
 export async function GET() {
-  return NextResponse.json({ runs: listRuns() });
+  return NextResponse.json({ runs: listRuns(), metrics: listPromptSummaries() });
 }

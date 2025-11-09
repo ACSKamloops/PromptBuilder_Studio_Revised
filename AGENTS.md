@@ -53,9 +53,9 @@ The Studio’s block library mirrors Zapier/Make but encodes Prompt‑Science de
   IO: `{ draft, context? } → { final, verifications[], usage }`. Guardrails: `policy=strict` default, `maxQuestions=7`.
 - **CoV over RAG** — `prompts/cov-over-rag.yaml`  
   IO: `{ draft, citations } → { corrected, verdicts[] }`.
-- **Recursive Self‑Improvement (RSIP)** — `prompts/recursive-self-improvement.yaml` / block id `rsip` (planned)  
+- **Recursive Self‑Improvement (RSIP)** — `prompts/recursive-self-improvement.yaml` / block id `rsip`  
   IO: `{ draft, criteria[] } → { improved, notes }`.
-- **SPOC Self‑Check** — `prompts/spoc-cue.yaml` / block id `spoc` (planned)  
+- **SPOC Self‑Check** — `prompts/spoc-cue.yaml` / block id `spoc`  
   IO: `{ prompt } → { prompt_with_cue }`.
 - **Self‑Consistency** — `prompts/self-consistency.yaml`  
   IO: `{ prompt } → { samples[], winner }`.
@@ -80,6 +80,14 @@ The Studio’s block library mirrors Zapier/Make but encodes Prompt‑Science de
 - **Scene Graph Builder** — block id `scene-graph-builder`
   Purpose: model spatial relationships for 3D/visual scenes. IO: `{ nodes[], relationships[] }`.
 
+## Evaluation & Observability
+- **Prompt Sensitivity Analysis (PSA)** — `prompts/prompt-sensitivity-analysis.yaml` / block id `psa`  
+  Purpose: run perturbation sweeps against a baseline prompt, capture variance per metric, and trigger AutoPrompt when stability falls below the configured threshold. IO: `{ baseline_prompt, perturbation_axes[], batch_size, stability_threshold } → { psaReport, recommendations[] }`.
+- **Prompt Metrics Ledger** *(system service)*  
+  Purpose: every run is recorded via `/api/run(s)` with execution metrics (tokens, latency, per-node stats) plus rolling summaries (run count, σ, variance). Surfaces in the Run Preview dialog (“Execution metrics”, “Historical metrics”, dashboard table) and via `/api/runs`.
+- **Execution Metrics Stream** *(SSE event `metrics`)*  
+  Purpose: expose live per-node telemetry during streaming previews so UI can show slowest node + live token totals.
+
 ## Governance, Safety & HITL
 - **Approval Gate** — block id `approval-gate`  
   Purpose: HITL review. IO: `{ proposal } → waits for `{ approved, notes }`. Params: `approval_assignees[]`, `approval_slaHours`, `approval_autoApprove`, `approval_notes`. Surfaced via `/api/approvals` inbox.
@@ -93,6 +101,8 @@ The Studio’s block library mirrors Zapier/Make but encodes Prompt‑Science de
   Purpose: label speculative content explicitly.
 - **Thinking Journal / Memory Summaries** — `prompts/thinking-journal.yaml`  
   Purpose: log facts + provenance for audits.
+- **Judge Network Evaluators** *(system service)*  
+  Purpose: Governance Sentinel, Quality Analyst, and Provenance Auditor agents auto-score every run (step success rate, confidence, verification efficacy). Their verdicts feed the Approval Gate inbox; high-confidence runs auto-approve, others escalate with rationale.
 
 ## Reference Compositions
 - **Deep Research (RAG + CoV)** — `compositions/deep_research.yaml`  

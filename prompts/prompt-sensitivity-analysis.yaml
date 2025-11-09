@@ -1,0 +1,47 @@
+id: psa-sweep
+title: Prompt Sensitivity Analysis
+category: Evaluation
+tags:
+  - evaluation
+  - reliability
+  - regression testing
+slots:
+  - name: baseline_prompt
+    label: Baseline Prompt
+    type: textarea
+    help: Provide the canonical prompt text that the sweep should evaluate.
+  - name: perturbation_axes
+    label: Perturbation Axes
+    type: multiselect
+    help: Dimensions to perturb (tone, audience, instructions, retrieval depth, etc.).
+  - name: batch_size
+    label: Batch Size
+    type: number
+    default: 32
+    help: Number of perturbations to launch in the sweep.
+  - name: stability_threshold
+    label: Stability Threshold
+    type: number
+    default: 0.85
+    help: Minimum acceptable stability score (0-1) before AutoPrompt is triggered.
+  - name: target_metrics
+    label: Target Metrics
+    type: textarea
+    help: Metrics to monitor (token totals, latency, evaluator scores, refusal rate).
+prompt: |-
+  You orchestrate a Prompt Sensitivity Analysis (PSA) harness. Given a baseline prompt, perturbation axes, and monitoring directives:
+  1. Generate a deterministic batch of prompt variants that cover each perturbation axis.
+  2. Execute the variants against the same inputs, capturing per-run metrics (token usage, latency, quality scores).
+  3. Calculate stability statistics (mean, variance, confidence interval) for each tracked metric and axis.
+  4. Flag metrics whose variance breaches the configured stability threshold and suggest mitigation actions.
+  5. Produce a concise report with sections: Overview, Metric Stability Table, Risk Flags, Recommended Actions, and Experiment IDs for traceability.
+when_to_use: >-
+  Run when validating a prompt before release, after significant edits, or when regression guards detect drift. Ensures robustness under controlled perturbations.
+failure_modes: >-
+  Running without a defined baseline, missing perturbation axes, or relying on ungrounded evaluation metrics. Avoid production execution without human review.
+acceptance_criteria: >-
+  Report includes stability score, variance, and confidence interval for each tracked metric, highlights any breached thresholds, and recommends whether to trigger AutoPrompt optimisation.
+combines_with:
+  - chain-of-verification
+  - approval-gate
+  - table-formatter

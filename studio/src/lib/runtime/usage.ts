@@ -1,5 +1,5 @@
 import type { PromptSpec } from "@/lib/promptspec";
-import type { TokenUsage } from "@/server/providers/types";
+import type { TokenUsage } from "@/types/run";
 
 export function estimateTokenUsage(spec: PromptSpec): TokenUsage {
   const promptChars = JSON.stringify(spec.nodes).length + JSON.stringify(spec.edges).length;
