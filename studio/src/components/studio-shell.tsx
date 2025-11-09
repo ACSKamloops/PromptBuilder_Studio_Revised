@@ -793,41 +793,11 @@ const promptSpec = useMemo(() => {
         ? metadataById.get(descriptor.metadataId)
         : metadataById.get(baseId);
 
-      const slotDefaults = metadata?.slots
-        ? Object.fromEntries(
-            (metadata.slots ?? []).map((s) => [s.name, s.default ?? (s.type === "number" ? 0 : "")]),
-          )
-        : {};
-      const ragDefaults = isRagBlock(baseId) ? { ...RAG_DEFAULT_PARAMS } : {};
-      const approvalDefaults = isApprovalBlock(baseId) ? { ...APPROVAL_DEFAULT_PARAMS } : {};
-      const routerDefaults = baseId === "control-router" ? { router_routes: defaultRouterRoutes() } : {};
-      const loopDefaults =
-        baseId === "control-loop"
-          ? { loop_concurrency: LOOP_DEFAULT.concurrency, loop_stopOnError: LOOP_DEFAULT.stopOnError }
-          : {};
-      const parallelDefaults =
-        baseId === "control-parallel" ? { parallel_aggregate: PARALLEL_DEFAULT_AGGREGATE } : {};
-      const retryDefaults =
-        baseId === "control-retry"
-          ? {
-              retry_timeoutMs: RETRY_DEFAULT.timeoutMs,
-              retry_retries: RETRY_DEFAULT.retries,
-              retry_backoff: RETRY_DEFAULT.backoff,
-            }
-          : {};
-      const initial = {
-        ...slotDefaults,
-        ...ragDefaults,
-        ...approvalDefaults,
-        ...routerDefaults,
-        ...loopDefaults,
-        ...parallelDefaults,
-        ...retryDefaults,
-      };
-      if (Object.keys(initial).length > 0) {
+      const defaultParams = buildDefaultParamsForBlock(baseId, metadataById);
+      if (Object.keys(defaultParams).length > 0) {
         setNodeParams((prev) => ({
           ...prev,
-          [uid]: initial,
+          [uid]: defaultParams,
         }));
       }
 
@@ -839,12 +809,7 @@ const promptSpec = useMemo(() => {
           type: "default",
           data: {
             label: descriptor?.name ?? metadata?.title ?? baseId,
-            summary:
-              descriptor?.description ??
-              metadata?.when_to_use ??
-              metadata?.failure_modes ??
-              metadata?.acceptance_criteria ??
-              "",
+            summary: composeBlockSummary(descriptor, metadata),
             category: descriptor?.category ?? metadata?.category,
             metadataId: metadata?.id ?? descriptor?.metadataId ?? baseId,
           },
