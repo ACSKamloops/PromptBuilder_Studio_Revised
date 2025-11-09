@@ -1,4 +1,9 @@
 import { blockCatalog, type BlockDescriptor } from "@/data/block-catalog";
+import {
+  computeFlowComplexity,
+  evaluateHybridDecision,
+  type HybridDecisionTelemetry,
+} from "@/lib/runtime/hybrid-controller";
 import { Annotation, StateGraph, START, END } from "@langchain/langgraph";
 import type { PromptSpec, PromptSpecNode } from "@/lib/promptspec";
 import type {
@@ -50,6 +55,7 @@ export interface LangGraphRunBlockOutput {
   compositionSteps?: string[];
   paramsUsed?: Record<string, unknown>;
   note?: string;
+  gating?: HybridDecisionTelemetry;
 }
 
 export interface LangGraphRunBlock {
@@ -83,6 +89,7 @@ export interface LangGraphRunResult {
     blocks: LangGraphRunBlock[];
   };
   verification: LangGraphVerificationSummary;
+  gatingDecisions?: HybridDecisionTelemetry[];
   message: string;
 }
 
@@ -135,6 +142,11 @@ type GraphStateType = typeof GraphState.State;
 
 type GraphUpdateType = typeof GraphState.Update;
 
+function isHybridNode(node: PromptSpecNode): boolean {
+  const baseId = node.id.includes("#") ? node.id.split("#")[0] : node.id;
+  return baseId === "reason.hybrid" || node.type === "reason.hybrid";
+}
+
 export async function executeLangGraph(promptSpec: PromptSpec): Promise<LangGraphRunResult> {
   const runId = `langgraph-${Date.now()}`;
   const timestamp = new Date().toISOString();
@@ -143,13 +155,21 @@ export async function executeLangGraph(promptSpec: PromptSpec): Promise<LangGrap
   const metadataMap = new Map<string, PromptMetadata>(metadataList.map((item) => [item.id, item]));
 
   const outputs: LangGraphRunBlock[] = [];
+  const gatingDecisions: HybridDecisionTelemetry[] = [];
+  const complexityScore = computeFlowComplexity(promptSpec);
 
-  for (const node of promptSpec.nodes) {
+  for (let index = 0; index < promptSpec.nodes.length; index += 1) {
+    const node = promptSpec.nodes[index];
     const metadata = node.metadataId ? metadataMap.get(node.metadataId) : undefined;
     const context: NodeExecutionContext = { node, metadata };
     const mode = resolveModeConfig(node);
     const finalState = await runNodeWithProposerVerifier(context, mode);
     const blockOutput = buildBlockOutput(context, mode, finalState);
+    if (isHybridNode(node)) {
+      const decision = evaluateHybridDecision(promptSpec, index);
+      gatingDecisions.push(decision);
+      blockOutput.gating = decision;
+    }
     outputs.push({
       id: node.id,
       block: node.block,
@@ -179,12 +199,14 @@ export async function executeLangGraph(promptSpec: PromptSpec): Promise<LangGrap
       nodeCount: promptSpec.nodes.length,
       edgeCount: promptSpec.edges.length,
       blocks: outputs,
+      complexityScore,
     },
     verification: {
       totalInterventions,
       averageConfidence,
       blocks: verificationBlocks,
     },
+    gatingDecisions,
     message:
       "Executed proposer/verifier LangGraph with intrinsic self-check logging. Replace stubs with live model calls when available.",
   };

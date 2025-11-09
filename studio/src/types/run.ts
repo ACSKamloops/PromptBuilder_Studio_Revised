@@ -1,6 +1,6 @@
-import type { LangGraphRunBlock } from "@/lib/runtime/langgraph-runner";
+import type { LangGraphRunBlock, LangGraphVerificationSummary } from "@/lib/runtime/langgraph-runner";
 import type { PromptSpec } from "@/lib/promptspec";
-import type { LangGraphVerificationSummary } from "@/lib/runtime/langgraph-runner";
+import type { HybridDecisionTelemetry } from "@/lib/runtime/hybrid-controller";
 
 export interface TokenUsage {
   promptTokens: number;
@@ -13,6 +13,7 @@ export interface RunManifest {
   nodeCount: number;
   edgeCount: number;
   blocks: LangGraphRunBlock[];
+  complexityScore: number;
 }
 
 export interface RunRecord {
@@ -24,5 +25,6 @@ export interface RunRecord {
   usage: TokenUsage;
   manifest: RunManifest;
   verification?: LangGraphVerificationSummary;
+  gatingDecisions?: HybridDecisionTelemetry[];
   message: string;
 }

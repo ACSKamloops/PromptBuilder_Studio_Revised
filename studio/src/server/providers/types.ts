@@ -16,6 +16,7 @@ export interface ProviderRunResult {
   usage: TokenUsage;
   manifest: LangGraphRunResult["manifest"];
   verification: LangGraphRunResult["verification"];
+  gatingDecisions?: LangGraphRunResult["gatingDecisions"];
   message: string;
 }
 
@@ -33,4 +34,3 @@ export interface LlmProvider {
   run(spec: PromptSpec): Promise<ProviderRunResult>;
   stream(spec: PromptSpec): AsyncGenerator<RunStreamEvent, void, unknown>;
 }
-

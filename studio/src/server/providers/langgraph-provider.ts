@@ -35,6 +35,7 @@ export class LangGraphProvider implements LlmProvider {
       usage,
       manifest: graphResult.manifest,
       verification: graphResult.verification,
+      gatingDecisions: graphResult.gatingDecisions,
       message: graphResult.message,
     };
     enqueueApprovals(spec, runResult);
